@@ -1,0 +1,10 @@
+.env
+.env.*
+certs/
+*.pem
+*.crt
+*.key
+*.pfx
+*.p12
+
+bin/
