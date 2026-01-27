@@ -17,7 +17,7 @@ func main() {
 	_ = godotenv.Load() // ignora erro em produção
 	cfg := config.Load()
 
-	client := bb.NewHTTPClient() // depois vira mTLS
+	client, _ := bb.NewHTTPClient() // depois vira mTLS
 	pixService := service.NewPixService(client, cfg, tokenCache)
 	pixHandler := handler.NewPixHandler(pixService)
 
