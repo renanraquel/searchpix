@@ -1,7 +1,7 @@
 .env
 .env.*
 certs/
-secrets/
+etc/secrets/
 *.pem
 *.crt
 *.key
@@ -9,3 +9,6 @@ secrets/
 *.p12
 
 bin/
+uploads/
+*.exe
+.idea/
