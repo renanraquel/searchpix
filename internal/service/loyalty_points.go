@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"searchpix/internal/model"
 	"searchpix/internal/repository"
@@ -35,7 +36,7 @@ func NewLoyaltyPointsService(
 	}
 }
 
-// EarnPoints adiciona pontos pelo valor em R$ (1 real = 1 ponto). tenantID para garantir escopo.
+// EarnPoints adiciona pontos pelo valor em R$ (1 ponto a cada R$5, sempre arredondando para cima). tenantID para garantir escopo.
 func (s *LoyaltyPointsService) EarnPoints(tenantID, cpf string, valueReais float64) (points int, err error) {
 	customer, err := s.customerRepo.GetByTenantAndCPF(tenantID, cpf)
 	if err != nil {
@@ -44,7 +45,9 @@ func (s *LoyaltyPointsService) EarnPoints(tenantID, cpf string, valueReais float
 	if customer == nil {
 		return 0, ErrCustomerNotFound
 	}
-	points = int(valueReais)
+	// 1 ponto a cada R$5, sempre arredondando para cima.
+	// Ex.: 5 => 1, 7/8/9 => 2, 10 => 2, 11 => 3, etc.
+	points = int(math.Ceil(valueReais / 5.0))
 	if points <= 0 {
 		return 0, fmt.Errorf("valor deve ser maior que zero")
 	}
