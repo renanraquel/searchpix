@@ -64,6 +64,7 @@ func main() {
 
 	// Public redemption (sem auth) - por tenant slug e cpf
 	mux.Handle("/api/public/redemption", enableCORS(http.HandlerFunc(publicRedemption.Get)))
+	mux.Handle("/api/public/register", enableCORS(http.HandlerFunc(publicRedemption.RegisterPublic)))
 	mux.Handle("/api/public/tenant-background", enableCORS(http.HandlerFunc(publicRedemption.ServeTenantBackground)))
 	mux.Handle("/api/public/product-image", enableCORS(http.HandlerFunc(publicRedemption.ServeProductImage)))
 	mux.Handle("/api/public/redeem", enableCORS(publicRedemption.RedeemProduct(pointsSvc)))

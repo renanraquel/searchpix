@@ -854,3 +854,96 @@ func (h *PublicRedemptionHandler) RedeemProduct(svc *service.LoyaltyPointsServic
 		json.NewEncoder(w).Encode(redemption)
 	}
 }
+
+// RegisterPublic cadastro público no programa de fidelidade (sem auth).
+// POST JSON: tenant_slug, name, cpf, phone
+func (h *PublicRedemptionHandler) RegisterPublic(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		TenantSlug string `json:"tenant_slug"`
+		Name       string `json:"name"`
+		CPF        string `json:"cpf"`
+		Phone      string `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Requisição inválida", http.StatusBadRequest)
+		return
+	}
+	slug := strings.TrimSpace(req.TenantSlug)
+	name := strings.TrimSpace(req.Name)
+	if slug == "" || name == "" {
+		http.Error(w, "tenant_slug e name são obrigatórios", http.StatusBadRequest)
+		return
+	}
+	if len(name) < 2 {
+		http.Error(w, "Informe o nome completo", http.StatusBadRequest)
+		return
+	}
+	cpfNorm := digitsOnly(req.CPF)
+	if len(cpfNorm) != 11 {
+		http.Error(w, "CPF deve conter 11 dígitos", http.StatusBadRequest)
+		return
+	}
+	phoneNorm := digitsOnly(req.Phone)
+	if len(phoneNorm) < 10 || len(phoneNorm) > 11 {
+		http.Error(w, "Telefone inválido (informe DDD + número)", http.StatusBadRequest)
+		return
+	}
+	tenant, err := h.tenantRepo.GetBySlug(slug)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if tenant == nil {
+		http.Error(w, "Estabelecimento não encontrado", http.StatusNotFound)
+		return
+	}
+	existing, err := h.customerRepo.GetByTenantAndCPF(tenant.ID, cpfNorm)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if existing != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":   "already_registered",
+			"message": "Este CPF já está cadastrado no programa de fidelidade deste estabelecimento.",
+		})
+		return
+	}
+	customer, err := h.customerRepo.Create(tenant.ID, cpfNorm, name, phoneNorm)
+	if err != nil {
+		// Concorrência: unique (tenant_id, cpf)
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error":   "already_registered",
+				"message": "Este CPF já está cadastrado no programa de fidelidade deste estabelecimento.",
+			})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":  "Cadastro realizado com sucesso.",
+		"customer": customer,
+	})
+}
+
+func digitsOnly(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
