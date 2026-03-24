@@ -9,6 +9,7 @@ import (
 	"searchpix/internal/config"
 	"searchpix/internal/db"
 	"searchpix/internal/handler"
+	"searchpix/internal/imagecache"
 	"searchpix/internal/seed"
 	"searchpix/internal/repository"
 	"searchpix/internal/service"
@@ -44,15 +45,18 @@ func main() {
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
 
+	productImageCache := imagecache.New()
+	log.Println("Cache em memória de imagens de produto inicializado (on-the-fly + invalidação em create/update/delete)")
+
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
 	tenantHandler := handler.NewTenantHandler(tenantRepo, userRepo)
-	productHandler := handler.NewProductHandler(productRepo)
+	productHandler := handler.NewProductHandler(productRepo, productImageCache)
 	customerHandler := handler.NewCustomerHandler(customerRepo)
 	pointsHandler := handler.NewPointsHandler(customerRepo, pointsSvc)
 	redemptionListHandler := handler.NewRedemptionListHandler(redemptionRepo)
 	redeemAtCounterHandler := handler.NewRedeemAtCounterHandler(customerRepo, pointsSvc)
-	publicRedemption := handler.NewPublicRedemptionHandler(tenantRepo, customerRepo, productRepo, redemptionRepo)
+	publicRedemption := handler.NewPublicRedemptionHandler(tenantRepo, customerRepo, productRepo, redemptionRepo, productImageCache)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------
