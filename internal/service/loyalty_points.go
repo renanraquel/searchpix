@@ -38,6 +38,12 @@ func NewLoyaltyPointsService(
 
 // EarnPoints adiciona pontos pelo valor em R$ (1 ponto a cada R$5, sempre arredondando para cima). tenantID para garantir escopo.
 func (s *LoyaltyPointsService) EarnPoints(tenantID, cpf string, valueReais float64) (points int, err error) {
+	ref := fmt.Sprintf("Compra R$ %.2f", valueReais)
+	return s.EarnPointsWithReference(tenantID, cpf, valueReais, ref)
+}
+
+// EarnPointsWithReference mesma regra de pontuação, com texto livre no histórico (ex.: NFC-e).
+func (s *LoyaltyPointsService) EarnPointsWithReference(tenantID, cpf string, valueReais float64, reference string) (points int, err error) {
 	customer, err := s.customerRepo.GetByTenantAndCPF(tenantID, cpf)
 	if err != nil {
 		return 0, err
@@ -45,8 +51,6 @@ func (s *LoyaltyPointsService) EarnPoints(tenantID, cpf string, valueReais float
 	if customer == nil {
 		return 0, ErrCustomerNotFound
 	}
-	// 1 ponto a cada R$5, sempre arredondando para cima.
-	// Ex.: 5 => 1, 7/8/9 => 2, 10 => 2, 11 => 3, etc.
 	points = int(math.Ceil(valueReais / 5.0))
 	if points <= 0 {
 		return 0, fmt.Errorf("valor deve ser maior que zero")
@@ -54,8 +58,7 @@ func (s *LoyaltyPointsService) EarnPoints(tenantID, cpf string, valueReais float
 	if err := s.customerRepo.AddPoints(customer.ID, points); err != nil {
 		return 0, err
 	}
-	ref := fmt.Sprintf("Compra R$ %.2f", valueReais)
-	_, err = s.pointsRepo.Create(customer.ID, points, "earn", ref)
+	_, err = s.pointsRepo.Create(customer.ID, points, "earn", reference)
 	return points, err
 }
 

@@ -75,6 +75,17 @@ func migratePostgres(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_customers_tenant_cpf ON customers(tenant_id, cpf)`,
 		`CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_redemptions_customer ON redemptions(customer_id)`,
+		`CREATE TABLE IF NOT EXISTS nfce_claims (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			access_key VARCHAR(44) NOT NULL,
+			customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+			value_reais NUMERIC(12,2) NOT NULL,
+			points_awarded INTEGER NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(tenant_id, access_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_claims_tenant ON nfce_claims(tenant_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -154,6 +165,17 @@ func migrateSQLite(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_customers_tenant_cpf ON customers(tenant_id, cpf)`,
 		`CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_redemptions_customer ON redemptions(customer_id)`,
+		`CREATE TABLE IF NOT EXISTS nfce_claims (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			access_key TEXT NOT NULL,
+			customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+			value_reais REAL NOT NULL,
+			points_awarded INTEGER NOT NULL,
+			created_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(tenant_id, access_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_claims_tenant ON nfce_claims(tenant_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
