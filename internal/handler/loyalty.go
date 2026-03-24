@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"searchpix/internal/auth"
-	"searchpix/internal/imagecache"
 	"searchpix/internal/model"
 	"searchpix/internal/repository"
 	"searchpix/internal/service"
@@ -139,12 +138,11 @@ func (h *TenantHandler) SetBackground(w http.ResponseWriter, r *http.Request) {
 // --- Products (protegido, por tenant) ---
 
 type ProductHandler struct {
-	repo     *repository.ProductRepository
-	imgCache *imagecache.Cache
+	repo *repository.ProductRepository
 }
 
-func NewProductHandler(repo *repository.ProductRepository, imgCache *imagecache.Cache) *ProductHandler {
-	return &ProductHandler{repo: repo, imgCache: imgCache}
+func NewProductHandler(repo *repository.ProductRepository) *ProductHandler {
+	return &ProductHandler{repo: repo}
 }
 
 // ServeImage retorna a imagem do produto armazenada no banco (GET /api/products/image?id=xxx).
@@ -159,10 +157,7 @@ func (h *ProductHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id é obrigatório", http.StatusBadRequest)
 		return
 	}
-	maxSide := imagecache.ParseMaxSide(r.URL.Query())
-	data, contentType, err := h.imgCache.GetOrRender(id, maxSide, func() ([]byte, string, error) {
-		return h.repo.GetImageByProductID(id)
-	})
+	data, contentType, err := h.repo.GetImageByProductID(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -251,7 +246,6 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.imgCache.InvalidateProduct(product.ID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(product)
@@ -330,7 +324,6 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.imgCache.InvalidateProduct(id)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updated)
 }
@@ -359,7 +352,6 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.imgCache.InvalidateProduct(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -696,11 +688,10 @@ func (h *PointsHandler) Earn(w http.ResponseWriter, r *http.Request) {
 // --- Public redemption (sem auth, por tenant_slug + cpf) ---
 
 type PublicRedemptionHandler struct {
-	tenantRepo     *repository.TenantRepository
-	customerRepo   *repository.CustomerRepository
-	productRepo    *repository.ProductRepository
+	tenantRepo   *repository.TenantRepository
+	customerRepo *repository.CustomerRepository
+	productRepo  *repository.ProductRepository
 	redemptionRepo *repository.RedemptionRepository
-	imgCache       *imagecache.Cache
 }
 
 func NewPublicRedemptionHandler(
@@ -708,14 +699,12 @@ func NewPublicRedemptionHandler(
 	customerRepo *repository.CustomerRepository,
 	productRepo *repository.ProductRepository,
 	redemptionRepo *repository.RedemptionRepository,
-	imgCache *imagecache.Cache,
 ) *PublicRedemptionHandler {
 	return &PublicRedemptionHandler{
 		tenantRepo:     tenantRepo,
 		customerRepo:   customerRepo,
 		productRepo:    productRepo,
 		redemptionRepo: redemptionRepo,
-		imgCache:       imgCache,
 	}
 }
 
@@ -785,10 +774,7 @@ func (h *PublicRedemptionHandler) ServeProductImage(w http.ResponseWriter, r *ht
 		http.Error(w, "Estabelecimento não encontrado", http.StatusNotFound)
 		return
 	}
-	maxSide := imagecache.ParseMaxSide(r.URL.Query())
-	data, contentType, err := h.imgCache.GetOrRender(id, maxSide, func() ([]byte, string, error) {
-		return h.productRepo.GetImageByID(id, tenant.ID)
-	})
+	data, contentType, err := h.productRepo.GetImageByID(id, tenant.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
