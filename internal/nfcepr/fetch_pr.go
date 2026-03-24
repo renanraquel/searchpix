@@ -10,7 +10,13 @@ import (
 	"time"
 )
 
-var valorPagarRegex = regexp.MustCompile(`(?i)Valor\s+a\s+pagar\s*R\$\s*:?\s*([\d]{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})`)
+// Na SEFAZ-PR o rótulo e o valor ficam em nós separados, ex.:
+// <label>Valor a pagar R$:</label><span class="totalNumb txtMax">15,00</span>
+var valorPagarRegex = regexp.MustCompile(`(?is)Valor\s+a\s+pagar\s*R\$\s*:?\s*(?:<[^>]+>|\s)+([\d]{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})`)
+
+// Reserva: label fechado imediatamente antes do span do total.
+var valorPagarRegexLabeledSpan = regexp.MustCompile(
+	`(?is)<label>\s*Valor\s+a\s+pagar\s*R\$\s*:?\s*</label>\s*<span[^>]*>\s*([\d]{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})\s*</span>`)
 
 // ParseBrazilianMoney converte "15,00" ou "1.234,56" para float64.
 func ParseBrazilianMoney(s string) (float64, error) {
@@ -46,9 +52,20 @@ func FetchValorPagarFromConsultaURL(pageURL string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	m := valorPagarRegex.FindSubmatch(body)
-	if len(m) < 2 {
-		return 0, fmt.Errorf("valor total não encontrado na página")
+	return extractValorPagarFromHTML(body)
+}
+
+func extractValorPagarFromHTML(body []byte) (float64, error) {
+	for _, re := range []*regexp.Regexp{valorPagarRegex, valorPagarRegexLabeledSpan} {
+		m := re.FindSubmatch(body)
+		if len(m) < 2 {
+			continue
+		}
+		v, err := ParseBrazilianMoney(string(m[1]))
+		if err != nil || v <= 0 {
+			continue
+		}
+		return v, nil
 	}
-	return ParseBrazilianMoney(string(m[1]))
+	return 0, fmt.Errorf("valor total não encontrado na página")
 }
