@@ -61,6 +61,7 @@ func main() {
 	mux.Handle("/api/tenants", enableCORS(http.HandlerFunc(tenantHandler.List)))
 	mux.Handle("/api/tenants/create", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.Create))))
 	mux.Handle("/api/tenants/background", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.SetBackground))))
+	mux.Handle("/api/tenants/nfce-emitter-cnpj", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.SetNfceEmitterCNPJ))))
 	mux.Handle("/api/auth/login", enableCORS(http.HandlerFunc(auth.LoyaltyLoginHandler(tenantRepo, userRepo))))
 	mux.Handle("/api/bootstrap", enableCORS(http.HandlerFunc(bootstrapHandler.Bootstrap)))
 

@@ -36,32 +36,43 @@ func (r *TenantRepository) List() ([]model.Tenant, error) {
 	return list, rows.Err()
 }
 
-func (r *TenantRepository) GetByID(id string) (*model.Tenant, error) {
-	q := `SELECT id, name, slug, created_at FROM tenants WHERE id = $1`
-	q = db.QueryForDriver(q, r.driver)
+func scanTenantFull(row interface{ Scan(dest ...interface{}) error }) (*model.Tenant, error) {
 	var t model.Tenant
-	err := r.db.QueryRow(q, id).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	var nfceCNPJ sql.NullString
+	err := row.Scan(&t.ID, &t.Name, &t.Slug, &nfceCNPJ, &t.CreatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if nfceCNPJ.Valid && nfceCNPJ.String != "" {
+		t.NfceEmitterCNPJ = nfceCNPJ.String
 	}
 	return &t, nil
 }
 
-func (r *TenantRepository) GetBySlug(slug string) (*model.Tenant, error) {
-	q := `SELECT id, name, slug, created_at FROM tenants WHERE slug = $1`
+func (r *TenantRepository) GetByID(id string) (*model.Tenant, error) {
+	q := `SELECT id, name, slug, nfce_emitter_cnpj, created_at FROM tenants WHERE id = $1`
 	q = db.QueryForDriver(q, r.driver)
-	var t model.Tenant
-	err := r.db.QueryRow(q, slug).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt)
+	t, err := scanTenantFull(r.db.QueryRow(q, id))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &t, nil
+	return t, nil
+}
+
+func (r *TenantRepository) GetBySlug(slug string) (*model.Tenant, error) {
+	q := `SELECT id, name, slug, nfce_emitter_cnpj, created_at FROM tenants WHERE slug = $1`
+	q = db.QueryForDriver(q, r.driver)
+	t, err := scanTenantFull(r.db.QueryRow(q, slug))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 func (r *TenantRepository) Create(name, slug string) (*model.Tenant, error) {
@@ -74,6 +85,14 @@ func (r *TenantRepository) Create(name, slug string) (*model.Tenant, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// SetNfceEmitterCNPJ grava o CNPJ do emitente (14 dígitos) usado para validar NFC-e na pontuação pública.
+func (r *TenantRepository) SetNfceEmitterCNPJ(tenantID, cnpj14 string) error {
+	q := `UPDATE tenants SET nfce_emitter_cnpj = $1 WHERE id = $2`
+	q = db.QueryForDriver(q, r.driver)
+	_, err := r.db.Exec(q, cnpj14, tenantID)
+	return err
 }
 
 // UpdateBackground atualiza a imagem de fundo do tenant

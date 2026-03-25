@@ -10,6 +10,7 @@ import (
 
 	"searchpix/internal/auth"
 	"searchpix/internal/model"
+	"searchpix/internal/nfcepr"
 	"searchpix/internal/repository"
 	"searchpix/internal/service"
 
@@ -89,6 +90,45 @@ func (h *TenantHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Estabelecimento e usuário criados. Use o usuário e senha para fazer login.",
+		"tenant":  tenant,
+	})
+}
+
+// SetNfceEmitterCNPJ cadastra o CNPJ do emitente nas NFC-e (14 dígitos), para validar notas na pontuação pública.
+func (h *TenantHandler) SetNfceEmitterCNPJ(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	tenantID := auth.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		http.Error(w, "Não autorizado", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		NfceEmitterCNPJ string `json:"nfce_emitter_cnpj"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "JSON inválido", http.StatusBadRequest)
+		return
+	}
+	cnpj14, err := nfcepr.NormalizeCNPJ14(req.NfceEmitterCNPJ)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.repo.SetNfceEmitterCNPJ(tenantID, cnpj14); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tenant, err := h.repo.GetByID(tenantID)
+	if err != nil || tenant == nil {
+		http.Error(w, "Erro ao recarregar estabelecimento", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "CNPJ emissor da NFC-e salvo. Apenas notas com esse CNPJ na chave poderão pontuar pelo link público.",
 		"tenant":  tenant,
 	})
 }
@@ -734,6 +774,7 @@ func (h *PublicRedemptionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	// URL da imagem de fundo (o endpoint decide se há imagem ou não; se não houver, o navegador só não exibirá nada)
 	tenant.BackgroundImageURL = "/api/public/tenant-background?tenant=" + slug
+	tenant.NfceEmitterCNPJ = "" // não expor CNPJ em endpoint público
 	products, _ := h.productRepo.ListByTenant(tenant.ID)
 	sort.Slice(products, func(i, j int) bool { return products[i].PointsRequired < products[j].PointsRequired })
 	for i := range products {

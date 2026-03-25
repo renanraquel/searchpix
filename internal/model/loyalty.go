@@ -4,6 +4,8 @@ type Tenant struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
 	Slug      string   `json:"slug"`
+	// CNPJ do emitente nas NFC-e (14 dígitos), para validar notas na rota pública /nfce-points.
+	NfceEmitterCNPJ string `json:"nfce_emitter_cnpj,omitempty"`
 	// URL pública da imagem de fundo (montada na API, não vem do banco)
 	BackgroundImageURL string   `json:"background_image_url,omitempty"`
 	CreatedAt FlexTime `json:"created_at"`

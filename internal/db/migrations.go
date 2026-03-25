@@ -98,6 +98,7 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE products ADD COLUMN image_content_type VARCHAR(100)`,
 		`ALTER TABLE tenants ADD COLUMN background_image_data BYTEA`,
 		`ALTER TABLE tenants ADD COLUMN background_image_content_type VARCHAR(100)`,
+		`ALTER TABLE tenants ADD COLUMN nfce_emitter_cnpj VARCHAR(14)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -188,6 +189,7 @@ func migrateSQLite(db *sql.DB) error {
 		`ALTER TABLE products ADD COLUMN image_content_type TEXT`,
 		`ALTER TABLE tenants ADD COLUMN background_image_data BLOB`,
 		`ALTER TABLE tenants ADD COLUMN background_image_content_type TEXT`,
+		`ALTER TABLE tenants ADD COLUMN nfce_emitter_cnpj TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

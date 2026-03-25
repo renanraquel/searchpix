@@ -67,6 +67,33 @@ func (h *PublicNFCeHandler) ClaimPoints(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	emitenteChave, err := nfcepr.ExtractEmitterCNPJFromAccessKey(chave)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(tenant.NfceEmitterCNPJ) == "" {
+		http.Error(
+			w,
+			"Pontos por nota fiscal não estão ativos: o estabelecimento precisa cadastrar o CNPJ emissor da NFC-e no painel (Pontos).",
+			http.StatusBadRequest,
+		)
+		return
+	}
+	tenantCNPJ, err := nfcepr.NormalizeCNPJ14(tenant.NfceEmitterCNPJ)
+	if err != nil {
+		http.Error(
+			w,
+			"CNPJ emissor cadastrado para NFC-e é inválido. Corrija no painel (Pontos).",
+			http.StatusBadRequest,
+		)
+		return
+	}
+	if emitenteChave != tenantCNPJ {
+		http.Error(w, "Esta nota fiscal não foi emitida por este estabelecimento.", http.StatusBadRequest)
+		return
+	}
+
 	customer, err := h.customerRepo.GetByTenantAndCPF(tenant.ID, req.CPF)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
