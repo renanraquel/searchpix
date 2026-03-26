@@ -20,12 +20,13 @@ import (
 // --- Tenants (listar público; criar protegido) ---
 
 type TenantHandler struct {
-	repo     *repository.TenantRepository
-	userRepo *repository.UserRepository
+	repo            *repository.TenantRepository
+	nfceEmitterRepo *repository.NfceEmitterRepository
+	userRepo        *repository.UserRepository
 }
 
-func NewTenantHandler(repo *repository.TenantRepository, userRepo *repository.UserRepository) *TenantHandler {
-	return &TenantHandler{repo: repo, userRepo: userRepo}
+func NewTenantHandler(repo *repository.TenantRepository, nfceEmitterRepo *repository.NfceEmitterRepository, userRepo *repository.UserRepository) *TenantHandler {
+	return &TenantHandler{repo: repo, nfceEmitterRepo: nfceEmitterRepo, userRepo: userRepo}
 }
 
 func (h *TenantHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -94,43 +95,88 @@ func (h *TenantHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SetNfceEmitterCNPJ cadastra o CNPJ do emitente nas NFC-e (14 dígitos), para validar notas na pontuação pública.
-func (h *TenantHandler) SetNfceEmitterCNPJ(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-		return
-	}
+// NfceEmitters gerencia os CNPJs emitentes aceitos para pontuação por NFC-e.
+// GET lista, POST adiciona, DELETE remove.
+func (h *TenantHandler) NfceEmitters(w http.ResponseWriter, r *http.Request) {
 	tenantID := auth.TenantIDFromContext(r.Context())
 	if tenantID == "" {
 		http.Error(w, "Não autorizado", http.StatusUnauthorized)
 		return
 	}
-	var req struct {
-		NfceEmitterCNPJ string `json:"nfce_emitter_cnpj"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "JSON inválido", http.StatusBadRequest)
+	switch r.Method {
+	case http.MethodGet:
+		list, err := h.nfceEmitterRepo.ListByTenant(tenantID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"emitters": list})
+		return
+	case http.MethodPost:
+		var req struct {
+			NfceEmitterCNPJ string `json:"nfce_emitter_cnpj"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "JSON inválido", http.StatusBadRequest)
+			return
+		}
+		cnpj14, err := nfcepr.NormalizeCNPJ14(req.NfceEmitterCNPJ)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := h.nfceEmitterRepo.Add(tenantID, cnpj14); err != nil {
+			if repository.IsUniqueViolation(err) {
+				http.Error(w, "CNPJ já cadastrado para este estabelecimento.", http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		list, err := h.nfceEmitterRepo.ListByTenant(tenantID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":  "CNPJ emissor da NFC-e adicionado com sucesso.",
+			"emitters": list,
+		})
+		return
+	case http.MethodDelete:
+		var req struct {
+			NfceEmitterCNPJ string `json:"nfce_emitter_cnpj"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "JSON inválido", http.StatusBadRequest)
+			return
+		}
+		cnpj14, err := nfcepr.NormalizeCNPJ14(req.NfceEmitterCNPJ)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := h.nfceEmitterRepo.Remove(tenantID, cnpj14); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		list, err := h.nfceEmitterRepo.ListByTenant(tenantID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":  "CNPJ emissor removido.",
+			"emitters": list,
+		})
+		return
+	default:
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
 	}
-	cnpj14, err := nfcepr.NormalizeCNPJ14(req.NfceEmitterCNPJ)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := h.repo.SetNfceEmitterCNPJ(tenantID, cnpj14); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	tenant, err := h.repo.GetByID(tenantID)
-	if err != nil || tenant == nil {
-		http.Error(w, "Erro ao recarregar estabelecimento", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "CNPJ emissor da NFC-e salvo. Apenas notas com esse CNPJ na chave poderão pontuar pelo link público.",
-		"tenant":  tenant,
-	})
 }
 
 // SetBackground permite ao estabelecimento logado definir uma imagem de fundo para a tela pública
@@ -674,14 +720,14 @@ func (h *PointsHandler) GetCustomerByCPF(w http.ResponseWriter, r *http.Request)
 	if customer == nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"found": false,
+			"found":   false,
 			"message": "Cliente não cadastrado. Cadastre o cliente antes de lançar pontos.",
 		})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"found": true,
+		"found":    true,
 		"customer": customer,
 	})
 }
@@ -698,8 +744,8 @@ func (h *PointsHandler) Earn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		CPF         string  `json:"cpf"`
-		ValueReais  float64 `json:"value_reais"`
+		CPF        string  `json:"cpf"`
+		ValueReais float64 `json:"value_reais"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Requisição inválida", http.StatusBadRequest)
@@ -728,9 +774,9 @@ func (h *PointsHandler) Earn(w http.ResponseWriter, r *http.Request) {
 // --- Public redemption (sem auth, por tenant_slug + cpf) ---
 
 type PublicRedemptionHandler struct {
-	tenantRepo   *repository.TenantRepository
-	customerRepo *repository.CustomerRepository
-	productRepo  *repository.ProductRepository
+	tenantRepo     *repository.TenantRepository
+	customerRepo   *repository.CustomerRepository
+	productRepo    *repository.ProductRepository
 	redemptionRepo *repository.RedemptionRepository
 }
 
@@ -750,9 +796,9 @@ func NewPublicRedemptionHandler(
 
 // RedemptionPublicResponse resposta da tela pública de resgates
 type RedemptionPublicResponse struct {
-	Tenant     model.Tenant           `json:"tenant"`
-	Customer   *model.Customer        `json:"customer,omitempty"`   // nil se não encontrado
-	Products   []model.Product        `json:"products"`
+	Tenant      model.Tenant           `json:"tenant"`
+	Customer    *model.Customer        `json:"customer,omitempty"` // nil se não encontrado
+	Products    []model.Product        `json:"products"`
 	Redemptions []model.RedemptionView `json:"redemptions"`
 }
 
@@ -861,8 +907,8 @@ func (h *PublicRedemptionHandler) RedeemProduct(svc *service.LoyaltyPointsServic
 		}
 		var req struct {
 			TenantSlug string `json:"tenant_slug"`
-			CPF       string `json:"cpf"`
-			ProductID string `json:"product_id"`
+			CPF        string `json:"cpf"`
+			ProductID  string `json:"product_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Requisição inválida", http.StatusBadRequest)

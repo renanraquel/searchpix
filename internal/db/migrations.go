@@ -86,6 +86,14 @@ func migratePostgres(db *sql.DB) error {
 			UNIQUE(tenant_id, access_key)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_claims_tenant ON nfce_claims(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS tenant_nfce_emitters (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			cnpj VARCHAR(14) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(tenant_id, cnpj)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_tenant_nfce_emitters_tenant ON tenant_nfce_emitters(tenant_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -99,6 +107,11 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE tenants ADD COLUMN background_image_data BYTEA`,
 		`ALTER TABLE tenants ADD COLUMN background_image_content_type VARCHAR(100)`,
 		`ALTER TABLE tenants ADD COLUMN nfce_emitter_cnpj VARCHAR(14)`,
+		`INSERT INTO tenant_nfce_emitters (id, tenant_id, cnpj)
+		 SELECT gen_random_uuid(), id, nfce_emitter_cnpj
+		 FROM tenants
+		 WHERE nfce_emitter_cnpj IS NOT NULL AND nfce_emitter_cnpj <> ''
+		 ON CONFLICT (tenant_id, cnpj) DO NOTHING`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -177,6 +190,14 @@ func migrateSQLite(db *sql.DB) error {
 			UNIQUE(tenant_id, access_key)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_claims_tenant ON nfce_claims(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS tenant_nfce_emitters (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			cnpj TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(tenant_id, cnpj)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_tenant_nfce_emitters_tenant ON tenant_nfce_emitters(tenant_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -190,6 +211,10 @@ func migrateSQLite(db *sql.DB) error {
 		`ALTER TABLE tenants ADD COLUMN background_image_data BLOB`,
 		`ALTER TABLE tenants ADD COLUMN background_image_content_type TEXT`,
 		`ALTER TABLE tenants ADD COLUMN nfce_emitter_cnpj TEXT`,
+		`INSERT OR IGNORE INTO tenant_nfce_emitters (id, tenant_id, cnpj)
+		 SELECT lower(hex(randomblob(16))), id, nfce_emitter_cnpj
+		 FROM tenants
+		 WHERE nfce_emitter_cnpj IS NOT NULL AND nfce_emitter_cnpj <> ''`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

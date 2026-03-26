@@ -9,8 +9,8 @@ import (
 	"searchpix/internal/config"
 	"searchpix/internal/db"
 	"searchpix/internal/handler"
-	"searchpix/internal/seed"
 	"searchpix/internal/repository"
+	"searchpix/internal/seed"
 	"searchpix/internal/service"
 
 	"github.com/joho/godotenv"
@@ -41,27 +41,30 @@ func main() {
 	pointsRepo := repository.NewPointsTransactionRepository(database, driver)
 	redemptionRepo := repository.NewRedemptionRepository(database, driver)
 	nfceClaimRepo := repository.NewNfceClaimRepository(database, driver)
+	nfceEmitterRepo := repository.NewNfceEmitterRepository(database, driver)
 
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
 
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
-	tenantHandler := handler.NewTenantHandler(tenantRepo, userRepo)
+	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo)
 	productHandler := handler.NewProductHandler(productRepo)
 	customerHandler := handler.NewCustomerHandler(customerRepo)
 	pointsHandler := handler.NewPointsHandler(customerRepo, pointsSvc)
 	redemptionListHandler := handler.NewRedemptionListHandler(redemptionRepo)
 	redeemAtCounterHandler := handler.NewRedeemAtCounterHandler(customerRepo, pointsSvc)
 	publicRedemption := handler.NewPublicRedemptionHandler(tenantRepo, customerRepo, productRepo, redemptionRepo)
-	publicNfce := handler.NewPublicNFCeHandler(tenantRepo, customerRepo, nfceClaimRepo, pointsSvc)
+	publicNfce := handler.NewPublicNFCeHandler(tenantRepo, customerRepo, nfceClaimRepo, nfceEmitterRepo, pointsSvc)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------
 	mux.Handle("/api/tenants", enableCORS(http.HandlerFunc(tenantHandler.List)))
 	mux.Handle("/api/tenants/create", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.Create))))
 	mux.Handle("/api/tenants/background", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.SetBackground))))
-	mux.Handle("/api/tenants/nfce-emitter-cnpj", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.SetNfceEmitterCNPJ))))
+	mux.Handle("/api/tenants/nfce-emitters", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.NfceEmitters))))
+	// Compat: rota antiga de CNPJ único agora aponta para o mesmo handler (POST/GET/DELETE).
+	mux.Handle("/api/tenants/nfce-emitter-cnpj", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(tenantHandler.NfceEmitters))))
 	mux.Handle("/api/auth/login", enableCORS(http.HandlerFunc(auth.LoyaltyLoginHandler(tenantRepo, userRepo))))
 	mux.Handle("/api/bootstrap", enableCORS(http.HandlerFunc(bootstrapHandler.Bootstrap)))
 

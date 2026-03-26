@@ -13,23 +13,26 @@ import (
 
 // PublicNFCeHandler V1: acúmulo de pontos a partir da URL do QR da NFC-e (PR) + CPF.
 type PublicNFCeHandler struct {
-	tenantRepo    *repository.TenantRepository
-	customerRepo  *repository.CustomerRepository
-	nfceClaimRepo *repository.NfceClaimRepository
-	pointsSvc     *service.LoyaltyPointsService
+	tenantRepo      *repository.TenantRepository
+	customerRepo    *repository.CustomerRepository
+	nfceClaimRepo   *repository.NfceClaimRepository
+	nfceEmitterRepo *repository.NfceEmitterRepository
+	pointsSvc       *service.LoyaltyPointsService
 }
 
 func NewPublicNFCeHandler(
 	tenantRepo *repository.TenantRepository,
 	customerRepo *repository.CustomerRepository,
 	nfceClaimRepo *repository.NfceClaimRepository,
+	nfceEmitterRepo *repository.NfceEmitterRepository,
 	pointsSvc *service.LoyaltyPointsService,
 ) *PublicNFCeHandler {
 	return &PublicNFCeHandler{
-		tenantRepo:    tenantRepo,
-		customerRepo:  customerRepo,
-		nfceClaimRepo: nfceClaimRepo,
-		pointsSvc:     pointsSvc,
+		tenantRepo:      tenantRepo,
+		customerRepo:    customerRepo,
+		nfceClaimRepo:   nfceClaimRepo,
+		nfceEmitterRepo: nfceEmitterRepo,
+		pointsSvc:       pointsSvc,
 	}
 }
 
@@ -72,24 +75,31 @@ func (h *PublicNFCeHandler) ClaimPoints(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(tenant.NfceEmitterCNPJ) == "" {
-		http.Error(
-			w,
-			"Pontos por nota fiscal não estão ativos: o estabelecimento precisa cadastrar o CNPJ emissor da NFC-e no painel (Pontos).",
-			http.StatusBadRequest,
-		)
-		return
-	}
-	tenantCNPJ, err := nfcepr.NormalizeCNPJ14(tenant.NfceEmitterCNPJ)
+	emitters, err := h.nfceEmitterRepo.ListByTenant(tenant.ID)
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(emitters) == 0 {
 		http.Error(
 			w,
-			"CNPJ emissor cadastrado para NFC-e é inválido. Corrija no painel (Pontos).",
+			"Pontos por nota fiscal não estão ativos: o estabelecimento precisa cadastrar ao menos um CNPJ emissor da NFC-e no painel (Pontos).",
 			http.StatusBadRequest,
 		)
 		return
 	}
-	if emitenteChave != tenantCNPJ {
+	validEmitter := false
+	for _, cnpj := range emitters {
+		norm, err := nfcepr.NormalizeCNPJ14(cnpj)
+		if err != nil {
+			continue
+		}
+		if norm == emitenteChave {
+			validEmitter = true
+			break
+		}
+	}
+	if !validEmitter {
 		http.Error(w, "Esta nota fiscal não foi emitida por este estabelecimento.", http.StatusBadRequest)
 		return
 	}
