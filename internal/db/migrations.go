@@ -112,6 +112,9 @@ func migratePostgres(db *sql.DB) error {
 		 FROM tenants
 		 WHERE nfce_emitter_cnpj IS NOT NULL AND nfce_emitter_cnpj <> ''
 		 ON CONFLICT (tenant_id, cnpj) DO NOTHING`,
+		`ALTER TABLE users ADD COLUMN full_name TEXT`,
+		`ALTER TABLE users ADD COLUMN cpf TEXT`,
+		`ALTER TABLE users ADD COLUMN phone TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -215,6 +218,9 @@ func migrateSQLite(db *sql.DB) error {
 		 SELECT lower(hex(randomblob(16))), id, nfce_emitter_cnpj
 		 FROM tenants
 		 WHERE nfce_emitter_cnpj IS NOT NULL AND nfce_emitter_cnpj <> ''`,
+		`ALTER TABLE users ADD COLUMN full_name TEXT`,
+		`ALTER TABLE users ADD COLUMN cpf TEXT`,
+		`ALTER TABLE users ADD COLUMN phone TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

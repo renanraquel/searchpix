@@ -87,6 +87,14 @@ func (r *TenantRepository) Create(name, slug string) (*model.Tenant, error) {
 	return &t, nil
 }
 
+// DeleteByID remove o estabelecimento (e usuários em cascata). Uso: rollback em signup público.
+func (r *TenantRepository) DeleteByID(id string) error {
+	q := `DELETE FROM tenants WHERE id = $1`
+	q = db.QueryForDriver(q, r.driver)
+	_, err := r.db.Exec(q, id)
+	return err
+}
+
 // SetNfceEmitterCNPJ grava o CNPJ do emitente (14 dígitos) usado para validar NFC-e na pontuação pública.
 func (r *TenantRepository) SetNfceEmitterCNPJ(tenantID, cnpj14 string) error {
 	q := `UPDATE tenants SET nfce_emitter_cnpj = $1 WHERE id = $2`

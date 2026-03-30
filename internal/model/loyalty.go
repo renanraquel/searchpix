@@ -17,6 +17,9 @@ type User struct {
 	TenantID     string   `json:"tenant_id"`
 	Username     string   `json:"username"`
 	PasswordHash string   `json:"-"`
+	FullName     string   `json:"full_name,omitempty"`
+	CPF          string   `json:"cpf,omitempty"`
+	Phone        string   `json:"phone,omitempty"`
 	CreatedAt   FlexTime `json:"created_at"`
 }
 

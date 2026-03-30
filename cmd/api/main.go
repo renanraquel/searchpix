@@ -49,6 +49,7 @@ func main() {
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
 	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo)
+	merchantSignup := handler.NewMerchantSignupHandler(tenantRepo, userRepo)
 	productHandler := handler.NewProductHandler(productRepo)
 	customerHandler := handler.NewCustomerHandler(customerRepo)
 	pointsHandler := handler.NewPointsHandler(customerRepo, pointsSvc)
@@ -71,6 +72,7 @@ func main() {
 	// Public redemption (sem auth) - por tenant slug e cpf
 	mux.Handle("/api/public/redemption", enableCORS(http.HandlerFunc(publicRedemption.Get)))
 	mux.Handle("/api/public/register", enableCORS(http.HandlerFunc(publicRedemption.RegisterPublic)))
+	mux.Handle("/api/public/merchant-signup", enableCORS(http.HandlerFunc(merchantSignup.Signup)))
 	mux.Handle("/api/public/tenant-background", enableCORS(http.HandlerFunc(publicRedemption.ServeTenantBackground)))
 	mux.Handle("/api/public/product-image", enableCORS(http.HandlerFunc(publicRedemption.ServeProductImage)))
 	mux.Handle("/api/public/redeem", enableCORS(publicRedemption.RedeemProduct(pointsSvc)))
@@ -104,7 +106,8 @@ func main() {
 			pixService := service.NewPixService(client, cfg, tokenCache)
 			pixHandler := handler.NewPixHandler(pixService)
 			mux.Handle("/login", enableCORS(http.HandlerFunc(auth.LoginHandler)))
-			mux.Handle("/pix", enableCORS(auth.AuthMiddleware(http.HandlerFunc(pixHandler.BuscarPix))))
+			pixChain := auth.LoyaltyAuthMiddleware(auth.PixModuleGate(tenantRepo, http.HandlerFunc(pixHandler.BuscarPix)))
+			mux.Handle("/pix", enableCORS(pixChain))
 			log.Println("Rotas PIX (/login, /pix) registradas")
 		}
 	}
