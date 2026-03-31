@@ -31,14 +31,36 @@ func firstForwardedIP(header string) string {
 	return strings.TrimSpace(parts[0])
 }
 
-// Create POST /api/public/page-visit
+func decodePageVisitRequest(r *http.Request) (pageVisitRequest, error) {
+	if r.Method == http.MethodGet {
+		q := r.URL.Query()
+		return pageVisitRequest{
+			PageKey:    q.Get("page_key"),
+			PagePath:   q.Get("page_path"),
+			Query:      q.Get("query"),
+			TenantSlug: q.Get("tenant_slug"),
+		}, nil
+	}
+	var req pageVisitRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	return req, err
+}
+
+func writePixelNoContent(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Create POST/GET /api/public/page-visit
 func (h *PageVisitHandler) Create(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
 	}
-	var req pageVisitRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodePageVisitRequest(r)
+	if err != nil {
 		http.Error(w, "Requisição inválida", http.StatusBadRequest)
 		return
 	}
@@ -59,6 +81,11 @@ func (h *PageVisitHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.repo.Create(pageKey, pagePath, req.Query, req.TenantSlug, referrer, userAgent, ip); err != nil {
 		http.Error(w, "Erro ao registrar acesso", http.StatusInternalServerError)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		writePixelNoContent(w)
 		return
 	}
 
