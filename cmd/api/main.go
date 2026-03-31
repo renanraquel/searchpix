@@ -42,6 +42,7 @@ func main() {
 	redemptionRepo := repository.NewRedemptionRepository(database, driver)
 	nfceClaimRepo := repository.NewNfceClaimRepository(database, driver)
 	nfceEmitterRepo := repository.NewNfceEmitterRepository(database, driver)
+	pageVisitRepo := repository.NewPageVisitRepository(database, driver)
 
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
@@ -57,6 +58,7 @@ func main() {
 	redeemAtCounterHandler := handler.NewRedeemAtCounterHandler(customerRepo, pointsSvc)
 	publicRedemption := handler.NewPublicRedemptionHandler(tenantRepo, customerRepo, productRepo, redemptionRepo)
 	publicNfce := handler.NewPublicNFCeHandler(tenantRepo, customerRepo, nfceClaimRepo, nfceEmitterRepo, pointsSvc)
+	pageVisitHandler := handler.NewPageVisitHandler(pageVisitRepo)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------
@@ -78,6 +80,7 @@ func main() {
 	mux.Handle("/api/public/product-image", enableCORS(http.HandlerFunc(publicRedemption.ServeProductImage)))
 	mux.Handle("/api/public/redeem", enableCORS(publicRedemption.RedeemProduct(pointsSvc)))
 	mux.Handle("/api/public/nfce-points", enableCORS(http.HandlerFunc(publicNfce.ClaimPoints)))
+	mux.Handle("/api/public/page-visit", enableCORS(http.HandlerFunc(pageVisitHandler.Create)))
 
 	// ---------- Rotas protegidas (fidelização) ----------
 	mux.Handle("/api/products", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(productHandler.List))))

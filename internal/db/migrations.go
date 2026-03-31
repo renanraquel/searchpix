@@ -105,6 +105,18 @@ func migratePostgres(db *sql.DB) error {
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_user_email_tokens_hash ON user_email_verification_tokens(token_hash)`,
+		`CREATE TABLE IF NOT EXISTS page_visits (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			page_key VARCHAR(80) NOT NULL,
+			page_path VARCHAR(255) NOT NULL,
+			query_string TEXT,
+			tenant_slug VARCHAR(120),
+			referrer TEXT,
+			user_agent TEXT,
+			ip VARCHAR(100),
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_page_visits_key_created_at ON page_visits(page_key, created_at)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -226,6 +238,18 @@ func migrateSQLite(db *sql.DB) error {
 			created_at TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_user_email_tokens_hash ON user_email_verification_tokens(token_hash)`,
+		`CREATE TABLE IF NOT EXISTS page_visits (
+			id TEXT PRIMARY KEY,
+			page_key TEXT NOT NULL,
+			page_path TEXT NOT NULL,
+			query_string TEXT,
+			tenant_slug TEXT,
+			referrer TEXT,
+			user_agent TEXT,
+			ip TEXT,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_page_visits_key_created_at ON page_visits(page_key, created_at)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
