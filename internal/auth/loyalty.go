@@ -22,9 +22,9 @@ type LoyaltyLoginRequest struct {
 
 // LoyaltyLoginResponse resposta com token e tenant
 type LoyaltyLoginResponse struct {
-	Token    string       `json:"token"`
-	Tenant   model.Tenant `json:"tenant"`
-	ExpiresAt time.Time   `json:"expires_at"`
+	Token     string       `json:"token"`
+	Tenant    model.Tenant `json:"tenant"`
+	ExpiresAt time.Time    `json:"expires_at"`
 }
 
 // LoyaltyLoginHandler autentica usuário por tenant (DB)
@@ -51,6 +51,10 @@ func LoyaltyLoginHandler(tenantRepo *repository.TenantRepository, userRepo *repo
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 			http.Error(w, "Usuário ou senha inválidos", http.StatusUnauthorized)
+			return
+		}
+		if user.Email != "" && !user.EmailVerified {
+			http.Error(w, "Confirme seu e-mail para ativar o login.", http.StatusForbidden)
 			return
 		}
 

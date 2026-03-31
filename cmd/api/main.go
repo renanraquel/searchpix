@@ -49,7 +49,7 @@ func main() {
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
 	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo)
-	merchantSignup := handler.NewMerchantSignupHandler(tenantRepo, userRepo)
+	merchantSignup := handler.NewMerchantSignupHandler(tenantRepo, userRepo, cfg.Email)
 	productHandler := handler.NewProductHandler(productRepo)
 	customerHandler := handler.NewCustomerHandler(customerRepo)
 	pointsHandler := handler.NewPointsHandler(customerRepo, pointsSvc)
@@ -73,6 +73,7 @@ func main() {
 	mux.Handle("/api/public/redemption", enableCORS(http.HandlerFunc(publicRedemption.Get)))
 	mux.Handle("/api/public/register", enableCORS(http.HandlerFunc(publicRedemption.RegisterPublic)))
 	mux.Handle("/api/public/merchant-signup", enableCORS(http.HandlerFunc(merchantSignup.Signup)))
+	mux.Handle("/api/public/merchant-signup/verify-email", enableCORS(http.HandlerFunc(merchantSignup.VerifyEmail)))
 	mux.Handle("/api/public/tenant-background", enableCORS(http.HandlerFunc(publicRedemption.ServeTenantBackground)))
 	mux.Handle("/api/public/product-image", enableCORS(http.HandlerFunc(publicRedemption.ServeProductImage)))
 	mux.Handle("/api/public/redeem", enableCORS(publicRedemption.RedeemProduct(pointsSvc)))

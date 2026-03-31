@@ -1,26 +1,28 @@
 package model
 
 type Tenant struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Slug      string   `json:"slug"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
 	// CNPJ do emitente nas NFC-e (14 dígitos), para validar notas na rota pública /nfce-points.
 	NfceEmitterCNPJ string `json:"nfce_emitter_cnpj,omitempty"`
 	// URL pública da imagem de fundo (montada na API, não vem do banco)
 	BackgroundImageURL string   `json:"background_image_url,omitempty"`
-	CreatedAt FlexTime `json:"created_at"`
+	CreatedAt          FlexTime `json:"created_at"`
 }
 
 // User usuário do sistema (por tenant)
 type User struct {
-	ID           string   `json:"id"`
-	TenantID     string   `json:"tenant_id"`
-	Username     string   `json:"username"`
-	PasswordHash string   `json:"-"`
-	FullName     string   `json:"full_name,omitempty"`
-	CPF          string   `json:"cpf,omitempty"`
-	Phone        string   `json:"phone,omitempty"`
-	CreatedAt   FlexTime `json:"created_at"`
+	ID            string   `json:"id"`
+	TenantID      string   `json:"tenant_id"`
+	Username      string   `json:"username"`
+	PasswordHash  string   `json:"-"`
+	FullName      string   `json:"full_name,omitempty"`
+	CPF           string   `json:"cpf,omitempty"`
+	Phone         string   `json:"phone,omitempty"`
+	Email         string   `json:"email,omitempty"`
+	EmailVerified bool     `json:"email_verified"`
+	CreatedAt     FlexTime `json:"created_at"`
 }
 
 // Product produto resgatável por pontos
@@ -51,7 +53,7 @@ type PointsTransaction struct {
 	ID         string   `json:"id"`
 	CustomerID string   `json:"customer_id"`
 	Amount     int      `json:"amount"` // positivo = ganho, negativo = resgate
-	Kind       string   `json:"kind"`  // "earn" | "redeem"
+	Kind       string   `json:"kind"`   // "earn" | "redeem"
 	Reference  string   `json:"reference"`
 	CreatedAt  FlexTime `json:"created_at"`
 }
@@ -74,11 +76,11 @@ type RedemptionView struct {
 
 // RedemptionListRow para consulta de resgates (nome, cpf, telefone, pontos, data)
 type RedemptionListRow struct {
-	ID         string   `json:"id"`
-	CustomerName string `json:"customer_name"`
-	CPF        string   `json:"cpf"`
-	Phone      string   `json:"phone"`
-	PointsUsed int      `json:"points_used"`
-	CreatedAt  FlexTime `json:"created_at"`
-	ProductDescription string `json:"product_description,omitempty"`
+	ID                 string   `json:"id"`
+	CustomerName       string   `json:"customer_name"`
+	CPF                string   `json:"cpf"`
+	Phone              string   `json:"phone"`
+	PointsUsed         int      `json:"points_used"`
+	CreatedAt          FlexTime `json:"created_at"`
+	ProductDescription string   `json:"product_description,omitempty"`
 }

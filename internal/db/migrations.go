@@ -33,6 +33,8 @@ func migratePostgres(db *sql.DB) error {
 			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 			username TEXT NOT NULL UNIQUE,
 			password_hash TEXT NOT NULL,
+			email TEXT UNIQUE,
+			email_verified BOOLEAN NOT NULL DEFAULT FALSE,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
 		`CREATE TABLE IF NOT EXISTS products (
@@ -94,6 +96,15 @@ func migratePostgres(db *sql.DB) error {
 			UNIQUE(tenant_id, cnpj)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_nfce_emitters_tenant ON tenant_nfce_emitters(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS user_email_verification_tokens (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			used_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_email_tokens_hash ON user_email_verification_tokens(token_hash)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -115,6 +126,9 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN full_name TEXT`,
 		`ALTER TABLE users ADD COLUMN cpf TEXT`,
 		`ALTER TABLE users ADD COLUMN phone TEXT`,
+		`ALTER TABLE users ADD COLUMN email TEXT`,
+		`ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -140,6 +154,8 @@ func migrateSQLite(db *sql.DB) error {
 			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 			username TEXT NOT NULL UNIQUE,
 			password_hash TEXT NOT NULL,
+			email TEXT UNIQUE,
+			email_verified INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS products (
@@ -201,6 +217,15 @@ func migrateSQLite(db *sql.DB) error {
 			UNIQUE(tenant_id, cnpj)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_nfce_emitters_tenant ON tenant_nfce_emitters(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS user_email_verification_tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TEXT NOT NULL,
+			used_at TEXT,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_email_tokens_hash ON user_email_verification_tokens(token_hash)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -221,6 +246,9 @@ func migrateSQLite(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN full_name TEXT`,
 		`ALTER TABLE users ADD COLUMN cpf TEXT`,
 		`ALTER TABLE users ADD COLUMN phone TEXT`,
+		`ALTER TABLE users ADD COLUMN email TEXT`,
+		`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {
