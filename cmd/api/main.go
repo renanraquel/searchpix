@@ -43,6 +43,7 @@ func main() {
 	nfceClaimRepo := repository.NewNfceClaimRepository(database, driver)
 	nfceEmitterRepo := repository.NewNfceEmitterRepository(database, driver)
 	pageVisitRepo := repository.NewPageVisitRepository(database, driver)
+	carouselRepo := repository.NewCarouselRepository(database, driver)
 
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
@@ -60,6 +61,7 @@ func main() {
 	publicNfce := handler.NewPublicNFCeHandler(tenantRepo, customerRepo, nfceClaimRepo, nfceEmitterRepo, pointsSvc)
 	pageVisitHandler := handler.NewPageVisitHandler(pageVisitRepo)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
+	carouselHandler := handler.NewCarouselHandler(carouselRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------
 	mux.Handle("/api/tenants", enableCORS(http.HandlerFunc(tenantHandler.List)))
@@ -81,6 +83,8 @@ func main() {
 	mux.Handle("/api/public/redeem", enableCORS(publicRedemption.RedeemProduct(pointsSvc)))
 	mux.Handle("/api/public/nfce-points", enableCORS(http.HandlerFunc(publicNfce.ClaimPoints)))
 	mux.Handle("/api/public/page-visit", enableCORS(http.HandlerFunc(pageVisitHandler.Create)))
+	mux.Handle("/api/public/carousel", enableCORS(http.HandlerFunc(carouselHandler.PublicGet)))
+	mux.Handle("/api/public/carousel/media", enableCORS(http.HandlerFunc(carouselHandler.PublicServeMedia)))
 
 	// ---------- Rotas protegidas (fidelização) ----------
 	mux.Handle("/api/products", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(productHandler.List))))
@@ -99,6 +103,23 @@ func main() {
 
 	mux.Handle("/api/redemptions", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(redemptionListHandler.List))))
 	mux.Handle("/api/redemptions/redeem", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(redeemAtCounterHandler.Redeem))))
+
+	mux.Handle("/api/carousel/items", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(carouselHandler.List))))
+	mux.Handle("/api/carousel/items/create", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(carouselHandler.Create))))
+	mux.Handle("/api/carousel/items/update", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(carouselHandler.Update))))
+	mux.Handle("/api/carousel/items/delete", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(carouselHandler.Delete))))
+	mux.Handle("/api/carousel/items/reorder", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(carouselHandler.Reorder))))
+	mux.Handle("/api/carousel/settings", enableCORS(auth.LoyaltyAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			carouselHandler.GetSettings(w, r)
+			return
+		}
+		if r.Method == http.MethodPost {
+			carouselHandler.SaveSettings(w, r)
+			return
+		}
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+	}))))
 
 	// ---------- PIX (legado) - só registra se BB configurado ----------
 	if cfg.BB.ApiBaseURL != "" && cfg.BB.OAuthURL != "" {

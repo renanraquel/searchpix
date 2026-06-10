@@ -117,6 +117,23 @@ func migratePostgres(db *sql.DB) error {
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_page_visits_key_created_at ON page_visits(page_key, created_at)`,
+		`CREATE TABLE IF NOT EXISTS carousel_items (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			media_type VARCHAR(10) NOT NULL CHECK (media_type IN ('image', 'video')),
+			title TEXT,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			media_data BYTEA NOT NULL,
+			content_type VARCHAR(100) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_carousel_items_tenant ON carousel_items(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS carousel_settings (
+			tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+			image_duration_seconds INTEGER NOT NULL DEFAULT 20 CHECK (image_duration_seconds > 0),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -250,6 +267,23 @@ func migrateSQLite(db *sql.DB) error {
 			created_at TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_page_visits_key_created_at ON page_visits(page_key, created_at)`,
+		`CREATE TABLE IF NOT EXISTS carousel_items (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			media_type TEXT NOT NULL CHECK (media_type IN ('image', 'video')),
+			title TEXT,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			media_data BLOB NOT NULL,
+			content_type TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_carousel_items_tenant ON carousel_items(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS carousel_settings (
+			tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+			image_duration_seconds INTEGER NOT NULL DEFAULT 20 CHECK (image_duration_seconds > 0),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
