@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"searchpix/internal/auth"
 	"searchpix/internal/repository"
@@ -312,9 +314,26 @@ func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Mídia não encontrada", http.StatusNotFound)
 		return
 	}
+	serveCarouselBytes(w, r, data, contentType)
+}
+
+func serveCarouselBytes(w http.ResponseWriter, r *http.Request, data []byte, contentType string) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	name := "media.bin"
+	switch {
+	case strings.HasPrefix(contentType, "video/"):
+		name = "media.mp4"
+	case strings.Contains(contentType, "png"):
+		name = "media.png"
+	case strings.HasPrefix(contentType, "image/"):
+		name = "media.jpg"
+	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(data)
+	// ServeContent habilita HTTP Range (206) — necessário para <video> no Safari/iOS.
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }
 
 func classifyCarouselMedia(contentType string) (mediaType string, ok bool) {
