@@ -305,7 +305,7 @@ func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "id e tenant são obrigatórios", http.StatusBadRequest)
 		return
 	}
-	data, contentType, _, err := h.repo.GetMediaByIDAndTenantSlug(id, tenantSlug)
+	data, contentType, _, updatedAt, err := h.repo.GetMediaByIDAndTenantSlug(id, tenantSlug)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -314,10 +314,10 @@ func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Mídia não encontrada", http.StatusNotFound)
 		return
 	}
-	serveCarouselBytes(w, r, data, contentType)
+	serveCarouselBytes(w, r, data, contentType, updatedAt)
 }
 
-func serveCarouselBytes(w http.ResponseWriter, r *http.Request, data []byte, contentType string) {
+func serveCarouselBytes(w http.ResponseWriter, r *http.Request, data []byte, contentType string, modTime time.Time) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -331,9 +331,12 @@ func serveCarouselBytes(w http.ResponseWriter, r *http.Request, data []byte, con
 		name = "media.jpg"
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	// ServeContent habilita HTTP Range (206) — necessário para <video> no Safari/iOS.
-	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+	if modTime.IsZero() {
+		modTime = time.Now()
+	}
+	http.ServeContent(w, r, name, modTime, bytes.NewReader(data))
 }
 
 func classifyCarouselMedia(contentType string) (mediaType string, ok bool) {

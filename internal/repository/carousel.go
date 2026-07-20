@@ -2,10 +2,20 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
+	"time"
 
 	"searchpix/internal/db"
 	"searchpix/internal/model"
 )
+
+func carouselMediaURL(id, tenantSlug string, updatedAt model.FlexTime) string {
+	v := updatedAt.Unix()
+	if tenantSlug != "" {
+		return fmt.Sprintf("/api/public/carousel/media?id=%s&tenant=%s&v=%d", id, tenantSlug, v)
+	}
+	return fmt.Sprintf("/api/public/carousel/media?id=%s&v=%d", id, v)
+}
 
 type CarouselRepository struct {
 	db     *sql.DB
@@ -35,7 +45,7 @@ func (r *CarouselRepository) ListByTenant(tenantID string) ([]model.CarouselItem
 		if title.Valid {
 			item.Title = title.String
 		}
-		item.MediaURL = "/api/public/carousel/media?id=" + item.ID + "&tenant="
+		item.MediaURL = carouselMediaURL(item.ID, "", item.UpdatedAt)
 		list = append(list, item)
 	}
 	return list, rows.Err()
@@ -66,7 +76,7 @@ func (r *CarouselRepository) ListByTenantSlug(slug string) ([]model.CarouselItem
 			item.Title = title.String
 		}
 		tenantID = item.TenantID
-		item.MediaURL = "/api/public/carousel/media?id=" + item.ID + "&tenant=" + tenantSlug
+		item.MediaURL = carouselMediaURL(item.ID, tenantSlug, item.UpdatedAt)
 		list = append(list, item)
 	}
 	return list, tenantID, rows.Err()
@@ -87,12 +97,12 @@ func (r *CarouselRepository) GetByID(id string) (*model.CarouselItem, error) {
 	if title.Valid {
 		item.Title = title.String
 	}
-	item.MediaURL = "/api/public/carousel/media?id=" + item.ID
+	item.MediaURL = carouselMediaURL(item.ID, "", item.UpdatedAt)
 	return &item, nil
 }
 
-func (r *CarouselRepository) GetMediaByIDAndTenantSlug(itemID, tenantSlug string) ([]byte, string, string, error) {
-	q := `SELECT ci.media_data, ci.content_type, ci.media_type
+func (r *CarouselRepository) GetMediaByIDAndTenantSlug(itemID, tenantSlug string) ([]byte, string, string, time.Time, error) {
+	q := `SELECT ci.media_data, ci.content_type, ci.media_type, ci.updated_at
 		FROM carousel_items ci
 		JOIN tenants t ON t.id = ci.tenant_id
 		WHERE ci.id = $1 AND t.slug = $2`
@@ -100,21 +110,22 @@ func (r *CarouselRepository) GetMediaByIDAndTenantSlug(itemID, tenantSlug string
 	var data []byte
 	var contentType sql.NullString
 	var mediaType string
-	err := r.db.QueryRow(q, itemID, tenantSlug).Scan(&data, &contentType, &mediaType)
+	var updatedAt model.FlexTime
+	err := r.db.QueryRow(q, itemID, tenantSlug).Scan(&data, &contentType, &mediaType, &updatedAt)
 	if err == sql.ErrNoRows {
-		return nil, "", "", nil
+		return nil, "", "", time.Time{}, nil
 	}
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", time.Time{}, err
 	}
 	if len(data) == 0 {
-		return nil, "", "", nil
+		return nil, "", "", time.Time{}, nil
 	}
 	ct := "application/octet-stream"
 	if contentType.Valid && contentType.String != "" {
 		ct = contentType.String
 	}
-	return data, ct, mediaType, nil
+	return data, ct, mediaType, updatedAt.Time, nil
 }
 
 func (r *CarouselRepository) NextSortOrder(tenantID string) (int, error) {
@@ -161,7 +172,7 @@ func (r *CarouselRepository) Create(tenantID, mediaType, title string, sortOrder
 	if titleNull.Valid {
 		item.Title = titleNull.String
 	}
-	item.MediaURL = "/api/public/carousel/media?id=" + item.ID
+	item.MediaURL = carouselMediaURL(item.ID, "", item.UpdatedAt)
 	return &item, nil
 }
 
