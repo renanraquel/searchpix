@@ -119,6 +119,7 @@ func (h *PublicNFCeHandler) ClaimPoints(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if used {
+		_ = h.nfceClaimRepo.InsertDuplicateAttempt(tenant.ID, chave, customer.ID, req.CPF, req.QRPayload, "exists_check")
 		http.Error(w, "Esta nota fiscal já foi utilizada para acumular pontos.", http.StatusConflict)
 		return
 	}
@@ -154,6 +155,7 @@ func (h *PublicNFCeHandler) ClaimPoints(w http.ResponseWriter, r *http.Request) 
 	if err := h.nfceClaimRepo.Insert(tenant.ID, chave, customer.ID, value, points); err != nil {
 		if repository.IsUniqueViolation(err) {
 			_ = h.customerRepo.SubtractPoints(customer.ID, points)
+			_ = h.nfceClaimRepo.InsertDuplicateAttempt(tenant.ID, chave, customer.ID, req.CPF, req.QRPayload, "unique_violation")
 			http.Error(w, "Esta nota fiscal já foi utilizada.", http.StatusConflict)
 			return
 		}

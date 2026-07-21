@@ -40,6 +40,23 @@ func (r *NfceClaimRepository) Insert(tenantID, accessKey, customerID string, val
 	return err
 }
 
+// InsertDuplicateAttempt registra tentativa rejeitada por nota já utilizada (para auditoria manual).
+func (r *NfceClaimRepository) InsertDuplicateAttempt(tenantID, accessKey, customerID, cpf, qrPayload, source string) error {
+	q := `INSERT INTO nfce_claim_duplicate_attempts (id, tenant_id, access_key, customer_id, cpf, qr_payload, source) VALUES ($1, $2, $3, NULLIF($4,''), NULLIF($5,''), NULLIF($6,''), $7)`
+	q = db.QueryForDriver(q, r.driver)
+	_, err := r.db.Exec(
+		q,
+		newUUID(),
+		tenantID,
+		accessKey,
+		strings.TrimSpace(customerID),
+		strings.TrimSpace(cpf),
+		strings.TrimSpace(qrPayload),
+		strings.TrimSpace(source),
+	)
+	return err
+}
+
 // IsUniqueViolation detecta conflito de chave duplicada (Postgres + SQLite).
 func IsUniqueViolation(err error) bool {
 	if err == nil {

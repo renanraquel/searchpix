@@ -134,6 +134,18 @@ func migratePostgres(db *sql.DB) error {
 			image_duration_seconds INTEGER NOT NULL DEFAULT 20 CHECK (image_duration_seconds > 0),
 			updated_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS nfce_claim_duplicate_attempts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			access_key VARCHAR(44) NOT NULL,
+			customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+			cpf TEXT,
+			qr_payload TEXT,
+			source VARCHAR(40) NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_access_key ON nfce_claim_duplicate_attempts(access_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_tenant_created ON nfce_claim_duplicate_attempts(tenant_id, created_at)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -284,6 +296,18 @@ func migrateSQLite(db *sql.DB) error {
 			image_duration_seconds INTEGER NOT NULL DEFAULT 20 CHECK (image_duration_seconds > 0),
 			updated_at TEXT DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS nfce_claim_duplicate_attempts (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			access_key TEXT NOT NULL,
+			customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,
+			cpf TEXT,
+			qr_payload TEXT,
+			source TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_access_key ON nfce_claim_duplicate_attempts(access_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_tenant_created ON nfce_claim_duplicate_attempts(tenant_id, created_at)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
