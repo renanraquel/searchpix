@@ -12,12 +12,20 @@ import (
 	"searchpix/internal/repository"
 )
 
+// carouselPublicEnabled controla a tela pública de TV (/carrossel-tv).
+// Desligado temporariamente por alto consumo de banda — religar quando houver solução.
+const carouselPublicEnabled = false
+
 type CarouselHandler struct {
 	repo *repository.CarouselRepository
 }
 
 func NewCarouselHandler(repo *repository.CarouselRepository) *CarouselHandler {
 	return &CarouselHandler{repo: repo}
+}
+
+func writeCarouselPublicDisabled(w http.ResponseWriter) {
+	http.Error(w, "Tela do carrossel temporariamente desativada", http.StatusServiceUnavailable)
 }
 
 func (h *CarouselHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +279,10 @@ func (h *CarouselHandler) PublicGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
 	}
+	if !carouselPublicEnabled {
+		writeCarouselPublicDisabled(w)
+		return
+	}
 	tenantSlug := strings.TrimSpace(r.URL.Query().Get("tenant"))
 	if tenantSlug == "" {
 		http.Error(w, "tenant é obrigatório", http.StatusBadRequest)
@@ -297,6 +309,10 @@ func (h *CarouselHandler) PublicGet(w http.ResponseWriter, r *http.Request) {
 func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	if !carouselPublicEnabled {
+		writeCarouselPublicDisabled(w)
 		return
 	}
 	id := r.URL.Query().Get("id")
