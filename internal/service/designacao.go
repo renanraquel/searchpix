@@ -69,8 +69,16 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 	}
 	switch tipoCodigo {
 	case "oracao_inicial":
-		if p.Tipo != "servo" && p.Tipo != "anciao" {
-			return false, "Apenas servos e anciãos"
+		// Servos/anciãos, ou estudante masculino pleno com disponibilidade de chegar cedo.
+		if p.Tipo == "estudante" {
+			if p.Sexo != "M" {
+				return false, "Apenas irmãos (sexo masculino)"
+			}
+			if p.Capacidade != "pleno" {
+				return false, "Estudante precisa ser capacidade plena"
+			}
+		} else if p.Tipo != "servo" && p.Tipo != "anciao" {
+			return false, "Apenas servos, anciãos ou estudantes plenos"
 		}
 		if !p.DisponivelOracaoInicial {
 			return false, "Não disponível para oração inicial"
@@ -79,8 +87,16 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Sem ajudante nesta parte"
 		}
 	case "oracao_final":
-		if p.Tipo != "servo" && p.Tipo != "anciao" {
-			return false, "Apenas servos e anciãos"
+		// Servos/anciãos, ou estudante masculino pleno.
+		if p.Tipo == "estudante" {
+			if p.Sexo != "M" {
+				return false, "Apenas irmãos (sexo masculino)"
+			}
+			if p.Capacidade != "pleno" {
+				return false, "Estudante precisa ser capacidade plena"
+			}
+		} else if p.Tipo != "servo" && p.Tipo != "anciao" {
+			return false, "Apenas servos, anciãos ou estudantes plenos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"

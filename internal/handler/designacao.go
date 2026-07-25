@@ -3,7 +3,9 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -679,31 +681,49 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 			c.Elegivel = false
 			c.MotivoInelegivel = "Já designado em outra parte nesta semana"
 		}
-		count, ultima, _ := h.repo.ContagemDesignacoesRecentes(tenantID, p.ID, semana.DataInicio, 8)
+		count, _, _ := h.repo.ContagemDesignacoesRecentes(tenantID, p.ID, semana.DataInicio, 8)
 		c.DesignacoesUltimas8Semanas = count
+		ultima, _ := h.repo.UltimaDesignacaoAntes(tenantID, p.ID, semana.DataInicio)
 		c.UltimaSemanaDesignado = ultima
 		if prev, _ := h.repo.DesignadoNaSemanaAnterior(tenantID, p.ID, semana.DataInicio); prev {
 			c.Alerta = "Designado na semana anterior"
+		} else if ultima == "" {
+			c.Alerta = "Nunca designado — prioridade"
+		} else {
+			c.Alerta = "Última: " + formatUltimaRotulo(ultima)
 		}
 		out = append(out, c)
 	}
-	// Ordena: elegíveis primeiro, depois menos designações
-	for i := 0; i < len(out); i++ {
-		for j := i + 1; j < len(out); j++ {
-			swap := false
-			if out[i].Elegivel != out[j].Elegivel {
-				swap = !out[i].Elegivel && out[j].Elegivel
-			} else if out[i].DesignacoesUltimas8Semanas != out[j].DesignacoesUltimas8Semanas {
-				swap = out[i].DesignacoesUltimas8Semanas > out[j].DesignacoesUltimas8Semanas
-			} else {
-				swap = out[i].Nome > out[j].Nome
-			}
-			if swap {
-				out[i], out[j] = out[j], out[i]
-			}
+	// Sugestão: elegíveis primeiro; quem está há mais tempo sem parte (ou nunca) sobe na lista.
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Elegivel != b.Elegivel {
+			return a.Elegivel
 		}
-	}
+		if a.UltimaSemanaDesignado != b.UltimaSemanaDesignado {
+			if a.UltimaSemanaDesignado == "" {
+				return true
+			}
+			if b.UltimaSemanaDesignado == "" {
+				return false
+			}
+			return a.UltimaSemanaDesignado < b.UltimaSemanaDesignado
+		}
+		if a.DesignacoesUltimas8Semanas != b.DesignacoesUltimas8Semanas {
+			return a.DesignacoesUltimas8Semanas < b.DesignacoesUltimas8Semanas
+		}
+		return a.Nome < b.Nome
+	})
 	writeJSON(w, http.StatusOK, out)
+}
+
+func formatUltimaRotulo(dataInicio string) string {
+	t, err := time.Parse("2006-01-02", dataInicio)
+	if err != nil {
+		return dataInicio
+	}
+	meses := []string{"", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"}
+	return fmt.Sprintf("%02d/%s", t.Day(), meses[int(t.Month())])
 }
 
 // Lembretes GET /api/desig/lembretes?date=YYYY-MM-DD

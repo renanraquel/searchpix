@@ -570,6 +570,27 @@ func (r *DesignacaoRepository) ContagemDesignacoesRecentes(tenantID, pessoaID, a
 	return count, ult, nil
 }
 
+// UltimaDesignacaoAntes retorna a data_inicio da última semana em que a pessoa foi designada (antes da semana atual).
+func (r *DesignacaoRepository) UltimaDesignacaoAntes(tenantID, pessoaID, antesDeDataInicio string) (string, error) {
+	q := db.QueryForDriver(
+		`SELECT MAX(s.data_inicio)
+		 FROM desig_designacoes d
+		 JOIN desig_partes p ON p.id = d.parte_id
+		 JOIN desig_semanas s ON s.id = p.semana_id
+		 WHERE s.tenant_id = $1 AND d.pessoa_id = $2 AND s.data_inicio < $3`,
+		r.driver,
+	)
+	var ultima sql.NullString
+	err := r.db.QueryRow(q, tenantID, pessoaID, antesDeDataInicio).Scan(&ultima)
+	if err != nil {
+		return "", err
+	}
+	if !ultima.Valid {
+		return "", nil
+	}
+	return normalizeDate(ultima.String), nil
+}
+
 func (r *DesignacaoRepository) DesignadoNaSemanaAnterior(tenantID, pessoaID, dataInicioAtual string) (bool, error) {
 	inicio, err := time.Parse("2006-01-02", dataInicioAtual)
 	if err != nil {
