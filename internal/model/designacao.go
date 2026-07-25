@@ -106,7 +106,9 @@ type DesigLembretesResponse struct {
 
 // DesigWhatsAppResponse texto pronto para WhatsApp.
 type DesigWhatsAppResponse struct {
-	Mensagem string `json:"mensagem"`
+	Mensagem   string `json:"mensagem"`
+	PessoaNome string `json:"pessoa_nome,omitempty"`
+	Telefone   string `json:"telefone,omitempty"`
 }
 
 // UserPublic dados do usuário no login (sem senha).

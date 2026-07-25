@@ -125,6 +125,9 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
+		if p.Capacidade == "limitado" {
+			return false, "Capacidade limitada — não pode ser dono da parte"
+		}
 	case "discurso":
 		if p.Tipo != "estudante" || p.Sexo != "M" {
 			return false, "Apenas estudantes do sexo masculino"
@@ -132,9 +135,15 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
+		if p.Capacidade == "limitado" {
+			return false, "Capacidade limitada — não pode ser dono da parte"
+		}
 	case "iniciando_conversas", "cultivando_interesse", "explicando_crencas", "fazendo_discipulos":
 		if p.Tipo != "estudante" {
 			return false, "Apenas estudantes"
+		}
+		if papel == "dono" && p.Capacidade == "limitado" {
+			return false, "Capacidade limitada — não pode ser dono da parte"
 		}
 		if papel == "ajudante" && donoSexo != "" && p.Sexo != donoSexo {
 			return false, "Ajudante deve ser do mesmo sexo do dono da parte"

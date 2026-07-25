@@ -792,10 +792,14 @@ func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Parte não encontrada", http.StatusNotFound)
 		return
 	}
-	var nome string
+	var nome, telefone string
 	for _, d := range parte.Designacoes {
 		if d.Papel == papel {
 			nome = d.PessoaNome
+			if pessoa, _ := h.repo.GetPessoaByID(d.PessoaID); pessoa != nil {
+				nome = pessoa.Nome
+				telefone = pessoa.Telefone
+			}
 			break
 		}
 	}
@@ -804,5 +808,9 @@ func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg := service.FormatWhatsAppMessage(semana.Rotulo, parte.Titulo, parte.DuracaoMin, parte.Tema, nome)
-	writeJSON(w, http.StatusOK, model.DesigWhatsAppResponse{Mensagem: msg})
+	writeJSON(w, http.StatusOK, model.DesigWhatsAppResponse{
+		Mensagem:   msg,
+		PessoaNome: nome,
+		Telefone:   telefone,
+	})
 }
