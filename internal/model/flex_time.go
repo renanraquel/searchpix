@@ -36,9 +36,15 @@ func (t *FlexTime) parse(s string) error {
 		t.Time = time.Time{}
 		return nil
 	}
+	// Go time.String() às vezes inclui monotônico: "... m=+1.23"
+	if i := indexOf(s, " m="); i >= 0 {
+		s = trimSpace(s[:i])
+	}
 	formats := []string{
 		time.RFC3339Nano,
 		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999 -0700 -07",
 		"2006-01-02 15:04:05.999999999-07:00",
 		"2006-01-02 15:04:05.999999999",
 		"2006-01-02 15:04:05",
@@ -52,6 +58,15 @@ func (t *FlexTime) parse(s string) error {
 		}
 	}
 	return fmt.Errorf("FlexTime: não foi possível parsear %q", s)
+}
+
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
 }
 
 func trimSpace(s string) string {

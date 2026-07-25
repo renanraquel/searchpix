@@ -22,9 +22,10 @@ type LoyaltyLoginRequest struct {
 
 // LoyaltyLoginResponse resposta com token e tenant
 type LoyaltyLoginResponse struct {
-	Token     string       `json:"token"`
-	Tenant    model.Tenant `json:"tenant"`
-	ExpiresAt time.Time    `json:"expires_at"`
+	Token     string           `json:"token"`
+	Tenant    model.Tenant     `json:"tenant"`
+	User      model.UserPublic `json:"user"`
+	ExpiresAt time.Time        `json:"expires_at"`
 }
 
 // LoyaltyLoginHandler autentica usuário por tenant (DB)
@@ -64,10 +65,16 @@ func LoyaltyLoginHandler(tenantRepo *repository.TenantRepository, userRepo *repo
 			return
 		}
 
+		role := user.Role
+		if role == "" {
+			role = model.RoleTenant
+		}
+
 		exp := time.Now().Add(8 * time.Hour)
 		claims := jwt.MapClaims{
 			"sub":       user.ID,
 			"tenant_id": tenant.ID,
+			"role":      role,
 			"exp":       exp.Unix(),
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -83,8 +90,13 @@ func LoyaltyLoginHandler(tenantRepo *repository.TenantRepository, userRepo *repo
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(LoyaltyLoginResponse{
-			Token:     tokenString,
-			Tenant:    *tenant,
+			Token:  tokenString,
+			Tenant: *tenant,
+			User: model.UserPublic{
+				ID:       user.ID,
+				Username: user.Username,
+				Role:     role,
+			},
 			ExpiresAt: exp,
 		})
 	}
@@ -117,12 +129,28 @@ func LoyaltyAuthMiddleware(next http.Handler) http.Handler {
 		}
 		sub, _ := claims["sub"].(string)
 		tenantID, _ := claims["tenant_id"].(string)
+		role, _ := claims["role"].(string)
 		if sub == "" || tenantID == "" {
 			http.Error(w, "Token inválido", http.StatusUnauthorized)
 			return
 		}
+		if role == "" {
+			role = model.RoleTenant
+		}
 		ctx := context.WithValue(r.Context(), ContextKeyUserID, sub)
 		ctx = context.WithValue(ctx, ContextKeyTenantID, tenantID)
+		ctx = context.WithValue(ctx, ContextKeyRole, role)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// RequireAdmin restringe o handler a usuários com role admin. Deve rodar após LoyaltyAuthMiddleware.
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if RoleFromContext(r.Context()) != model.RoleAdmin {
+			http.Error(w, "Acesso restrito ao administrador", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }

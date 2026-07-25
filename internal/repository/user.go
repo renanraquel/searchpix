@@ -19,9 +19,9 @@ func NewUserRepository(database *sql.DB, driver string) *UserRepository {
 
 func scanUserFromRow(row *sql.Row) (*model.User, error) {
 	var u model.User
-	var fn, cpf, ph, email sql.NullString
+	var fn, cpf, ph, email, role sql.NullString
 	var emailVerified sql.NullBool
-	err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.PasswordHash, &u.CreatedAt, &fn, &cpf, &ph, &email, &emailVerified)
+	err := row.Scan(&u.ID, &u.TenantID, &u.Username, &u.PasswordHash, &u.CreatedAt, &fn, &cpf, &ph, &email, &emailVerified, &role)
 	if err != nil {
 		return nil, err
 	}
@@ -38,12 +38,19 @@ func scanUserFromRow(row *sql.Row) (*model.User, error) {
 		u.Email = email.String
 	}
 	u.EmailVerified = emailVerified.Valid && emailVerified.Bool
+	if role.Valid && role.String != "" {
+		u.Role = role.String
+	} else {
+		u.Role = model.RoleTenant
+	}
 	return &u, nil
 }
 
+const userSelectCols = `id, tenant_id, username, password_hash, created_at, full_name, cpf, phone, email, email_verified, role`
+
 // GetByUsername busca usuário pelo login (username único no sistema para identificar o tenant)
 func (r *UserRepository) GetByUsername(username string) (*model.User, error) {
-	q := `SELECT id, tenant_id, username, password_hash, created_at, full_name, cpf, phone, email, email_verified FROM users WHERE username = $1`
+	q := `SELECT ` + userSelectCols + ` FROM users WHERE username = $1`
 	q = db.QueryForDriver(q, r.driver)
 	u, err := scanUserFromRow(r.db.QueryRow(q, username))
 	if err == sql.ErrNoRows {
@@ -56,7 +63,7 @@ func (r *UserRepository) GetByUsername(username string) (*model.User, error) {
 }
 
 func (r *UserRepository) GetByTenantAndUsername(tenantID, username string) (*model.User, error) {
-	q := `SELECT id, tenant_id, username, password_hash, created_at, full_name, cpf, phone, email, email_verified FROM users WHERE tenant_id = $1 AND username = $2`
+	q := `SELECT ` + userSelectCols + ` FROM users WHERE tenant_id = $1 AND username = $2`
 	q = db.QueryForDriver(q, r.driver)
 	u, err := scanUserFromRow(r.db.QueryRow(q, tenantID, username))
 	if err == sql.ErrNoRows {
@@ -69,18 +76,26 @@ func (r *UserRepository) GetByTenantAndUsername(tenantID, username string) (*mod
 }
 
 func (r *UserRepository) Create(tenantID, username, passwordHash string) (*model.User, error) {
-	return r.CreateWithProfile(tenantID, username, passwordHash, "", "", "", "")
+	return r.CreateWithProfileAndRole(tenantID, username, passwordHash, "", "", "", "", model.RoleTenant)
 }
 
 // CreateWithProfile cria usuário; campos de perfil vazios gravam NULL no banco.
 func (r *UserRepository) CreateWithProfile(tenantID, username, passwordHash, fullName, cpf, phone, email string) (*model.User, error) {
-	q := `INSERT INTO users (id, tenant_id, username, password_hash, full_name, cpf, phone, email, email_verified) VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9) RETURNING id, tenant_id, username, created_at`
+	return r.CreateWithProfileAndRole(tenantID, username, passwordHash, fullName, cpf, phone, email, model.RoleTenant)
+}
+
+// CreateWithProfileAndRole cria usuário com role explícito.
+func (r *UserRepository) CreateWithProfileAndRole(tenantID, username, passwordHash, fullName, cpf, phone, email, role string) (*model.User, error) {
+	if role == "" {
+		role = model.RoleTenant
+	}
+	q := `INSERT INTO users (id, tenant_id, username, password_hash, full_name, cpf, phone, email, email_verified, role) VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9, $10) RETURNING id, tenant_id, username, created_at`
 	q = db.QueryForDriver(q, r.driver)
 	id := newUUID()
 	var u model.User
 	u.PasswordHash = passwordHash
 	emailVerified := email == ""
-	err := r.db.QueryRow(q, id, tenantID, username, passwordHash, fullName, cpf, phone, email, emailVerified).Scan(&u.ID, &u.TenantID, &u.Username, &u.CreatedAt)
+	err := r.db.QueryRow(q, id, tenantID, username, passwordHash, fullName, cpf, phone, email, emailVerified, role).Scan(&u.ID, &u.TenantID, &u.Username, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -89,11 +104,12 @@ func (r *UserRepository) CreateWithProfile(tenantID, username, passwordHash, ful
 	u.Phone = phone
 	u.Email = email
 	u.EmailVerified = emailVerified
+	u.Role = role
 	return &u, nil
 }
 
 func (r *UserRepository) GetByEmail(email string) (*model.User, error) {
-	q := `SELECT id, tenant_id, username, password_hash, created_at, full_name, cpf, phone, email, email_verified FROM users WHERE email = $1`
+	q := `SELECT ` + userSelectCols + ` FROM users WHERE email = $1`
 	q = db.QueryForDriver(q, r.driver)
 	u, err := scanUserFromRow(r.db.QueryRow(q, email))
 	if err == sql.ErrNoRows {

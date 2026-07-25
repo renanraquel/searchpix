@@ -44,9 +44,11 @@ func main() {
 	nfceEmitterRepo := repository.NewNfceEmitterRepository(database, driver)
 	pageVisitRepo := repository.NewPageVisitRepository(database, driver)
 	carouselRepo := repository.NewCarouselRepository(database, driver)
+	desigRepo := repository.NewDesignacaoRepository(database, driver)
 
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
+	seed.RunAdminAndDesignacao(tenantRepo, userRepo, desigRepo)
 
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
@@ -62,6 +64,7 @@ func main() {
 	pageVisitHandler := handler.NewPageVisitHandler(pageVisitRepo)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
 	carouselHandler := handler.NewCarouselHandler(carouselRepo)
+	desigHandler := handler.NewDesignacaoHandler(desigRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------
 	mux.Handle("/api/tenants", enableCORS(http.HandlerFunc(tenantHandler.List)))
@@ -120,6 +123,28 @@ func main() {
 		}
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 	}))))
+
+	// ---------- Designações (apenas ADMIN) ----------
+	admin := func(h http.HandlerFunc) http.Handler {
+		return enableCORS(auth.LoyaltyAuthMiddleware(auth.RequireAdmin(h)))
+	}
+	mux.Handle("/api/desig/tipos", admin(desigHandler.ListTipos))
+	mux.Handle("/api/desig/pessoas", admin(desigHandler.ListPessoas))
+	mux.Handle("/api/desig/pessoas/create", admin(desigHandler.CreatePessoa))
+	mux.Handle("/api/desig/pessoas/update", admin(desigHandler.UpdatePessoa))
+	mux.Handle("/api/desig/pessoas/delete", admin(desigHandler.DeletePessoa))
+	mux.Handle("/api/desig/semanas", admin(desigHandler.ListSemanas))
+	mux.Handle("/api/desig/semanas/get", admin(desigHandler.GetSemana))
+	mux.Handle("/api/desig/semanas/create", admin(desigHandler.CreateSemana))
+	mux.Handle("/api/desig/semanas/delete", admin(desigHandler.DeleteSemana))
+	mux.Handle("/api/desig/partes/create", admin(desigHandler.CreateParte))
+	mux.Handle("/api/desig/partes/update", admin(desigHandler.UpdateParte))
+	mux.Handle("/api/desig/partes/delete", admin(desigHandler.DeleteParte))
+	mux.Handle("/api/desig/designacoes/set", admin(desigHandler.SetDesignacao))
+	mux.Handle("/api/desig/designacoes/clear", admin(desigHandler.ClearDesignacao))
+	mux.Handle("/api/desig/candidatos", admin(desigHandler.Candidatos))
+	mux.Handle("/api/desig/lembretes", admin(desigHandler.Lembretes))
+	mux.Handle("/api/desig/whatsapp", admin(desigHandler.WhatsApp))
 
 	// ---------- PIX (legado) - só registra se BB configurado ----------
 	if cfg.BB.ApiBaseURL != "" && cfg.BB.OAuthURL != "" {

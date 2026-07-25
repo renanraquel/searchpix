@@ -146,6 +146,64 @@ func migratePostgres(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_access_key ON nfce_claim_duplicate_attempts(access_key)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_tenant_created ON nfce_claim_duplicate_attempts(tenant_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS desig_tipos_parte (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			codigo TEXT NOT NULL UNIQUE,
+			categoria TEXT NOT NULL,
+			nome TEXT NOT NULL,
+			fixa INTEGER NOT NULL DEFAULT 0,
+			permite_ajudante INTEGER NOT NULL DEFAULT 0,
+			ordem INTEGER NOT NULL DEFAULT 0,
+			duracao_padrao_min INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS desig_pessoas (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			nome TEXT NOT NULL,
+			tipo TEXT NOT NULL CHECK (tipo IN ('estudante', 'servo', 'anciao')),
+			sexo TEXT NOT NULL CHECK (sexo IN ('M', 'F')),
+			telefone TEXT,
+			ativo INTEGER NOT NULL DEFAULT 1,
+			qualificado_tesouros INTEGER NOT NULL DEFAULT 0,
+			disponivel_oracao_inicial INTEGER NOT NULL DEFAULT 1,
+			qualificado_presidente INTEGER NOT NULL DEFAULT 0,
+			capacidade TEXT NOT NULL DEFAULT 'pleno' CHECK (capacidade IN ('pleno', 'limitado')),
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_pessoas_tenant ON desig_pessoas(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_semanas (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			data_inicio DATE NOT NULL,
+			data_fim DATE NOT NULL,
+			data_reuniao DATE NOT NULL,
+			rotulo TEXT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(tenant_id, data_inicio)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_semanas_tenant ON desig_semanas(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_partes (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			semana_id UUID NOT NULL REFERENCES desig_semanas(id) ON DELETE CASCADE,
+			tipo_parte_id UUID NOT NULL REFERENCES desig_tipos_parte(id),
+			titulo TEXT NOT NULL,
+			tema TEXT NOT NULL DEFAULT '',
+			duracao_min INTEGER NOT NULL DEFAULT 0,
+			ordem INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_partes_semana ON desig_partes(semana_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_designacoes (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			parte_id UUID NOT NULL REFERENCES desig_partes(id) ON DELETE CASCADE,
+			pessoa_id UUID NOT NULL REFERENCES desig_pessoas(id) ON DELETE CASCADE,
+			papel TEXT NOT NULL CHECK (papel IN ('dono', 'ajudante')),
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(parte_id, papel)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_designacoes_parte ON desig_designacoes(parte_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_designacoes_pessoa ON desig_designacoes(pessoa_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -169,6 +227,7 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN phone TEXT`,
 		`ALTER TABLE users ADD COLUMN email TEXT`,
 		`ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'tenant'`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -308,6 +367,64 @@ func migrateSQLite(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_access_key ON nfce_claim_duplicate_attempts(access_key)`,
 		`CREATE INDEX IF NOT EXISTS idx_nfce_dup_attempts_tenant_created ON nfce_claim_duplicate_attempts(tenant_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS desig_tipos_parte (
+			id TEXT PRIMARY KEY,
+			codigo TEXT NOT NULL UNIQUE,
+			categoria TEXT NOT NULL,
+			nome TEXT NOT NULL,
+			fixa INTEGER NOT NULL DEFAULT 0,
+			permite_ajudante INTEGER NOT NULL DEFAULT 0,
+			ordem INTEGER NOT NULL DEFAULT 0,
+			duracao_padrao_min INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS desig_pessoas (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			nome TEXT NOT NULL,
+			tipo TEXT NOT NULL CHECK (tipo IN ('estudante', 'servo', 'anciao')),
+			sexo TEXT NOT NULL CHECK (sexo IN ('M', 'F')),
+			telefone TEXT,
+			ativo INTEGER NOT NULL DEFAULT 1,
+			qualificado_tesouros INTEGER NOT NULL DEFAULT 0,
+			disponivel_oracao_inicial INTEGER NOT NULL DEFAULT 1,
+			qualificado_presidente INTEGER NOT NULL DEFAULT 0,
+			capacidade TEXT NOT NULL DEFAULT 'pleno' CHECK (capacidade IN ('pleno', 'limitado')),
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_pessoas_tenant ON desig_pessoas(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_semanas (
+			id TEXT PRIMARY KEY,
+			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+			data_inicio TEXT NOT NULL,
+			data_fim TEXT NOT NULL,
+			data_reuniao TEXT NOT NULL,
+			rotulo TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(tenant_id, data_inicio)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_semanas_tenant ON desig_semanas(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_partes (
+			id TEXT PRIMARY KEY,
+			semana_id TEXT NOT NULL REFERENCES desig_semanas(id) ON DELETE CASCADE,
+			tipo_parte_id TEXT NOT NULL REFERENCES desig_tipos_parte(id),
+			titulo TEXT NOT NULL,
+			tema TEXT NOT NULL DEFAULT '',
+			duracao_min INTEGER NOT NULL DEFAULT 0,
+			ordem INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_partes_semana ON desig_partes(semana_id)`,
+		`CREATE TABLE IF NOT EXISTS desig_designacoes (
+			id TEXT PRIMARY KEY,
+			parte_id TEXT NOT NULL REFERENCES desig_partes(id) ON DELETE CASCADE,
+			pessoa_id TEXT NOT NULL REFERENCES desig_pessoas(id) ON DELETE CASCADE,
+			papel TEXT NOT NULL CHECK (papel IN ('dono', 'ajudante')),
+			created_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(parte_id, papel)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_designacoes_parte ON desig_designacoes(parte_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_desig_designacoes_pessoa ON desig_designacoes(pessoa_id)`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {
@@ -330,6 +447,7 @@ func migrateSQLite(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN phone TEXT`,
 		`ALTER TABLE users ADD COLUMN email TEXT`,
 		`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'tenant'`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
 	} {
 		if _, err := db.Exec(q); err != nil {

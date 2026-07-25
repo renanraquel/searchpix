@@ -11,6 +11,11 @@ type Tenant struct {
 	CreatedAt          FlexTime `json:"created_at"`
 }
 
+const (
+	RoleTenant = "tenant"
+	RoleAdmin  = "admin"
+)
+
 // User usuário do sistema (por tenant)
 type User struct {
 	ID            string   `json:"id"`
@@ -22,6 +27,7 @@ type User struct {
 	Phone         string   `json:"phone,omitempty"`
 	Email         string   `json:"email,omitempty"`
 	EmailVerified bool     `json:"email_verified"`
+	Role          string   `json:"role"`
 	CreatedAt     FlexTime `json:"created_at"`
 }
 
