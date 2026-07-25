@@ -108,9 +108,6 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 		if !p.QualificadoPresidente {
 			return false, "Não qualificado para presidente"
 		}
-		if p.Capacidade == "limitado" {
-			return false, "Capacidade limitada"
-		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
@@ -121,9 +118,8 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 		if !p.QualificadoTesouros {
 			return false, "Não qualificado para Tesouros"
 		}
-		if p.Capacidade == "limitado" {
-			return false, "Capacidade limitada"
-		}
+		// Limitados podem fazer Tesouros, mas só por decisão manual
+		// (sinalizado como somente_manual na lista de candidatos).
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}

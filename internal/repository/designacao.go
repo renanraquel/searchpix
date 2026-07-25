@@ -591,6 +591,50 @@ func (r *DesignacaoRepository) UltimaDesignacaoAntes(tenantID, pessoaID, antesDe
 	return normalizeDate(ultima.String), nil
 }
 
+// HistoricoTipoParte retorna quantas vezes a pessoa fez o mesmo tipo no ciclo
+// recente e a última semana (sem limite de tempo) em que fez esse tipo.
+func (r *DesignacaoRepository) HistoricoTipoParte(tenantID, pessoaID, tipoCodigo, antesDeDataInicio string, semanas int) (int, string, error) {
+	antes, err := time.Parse("2006-01-02", antesDeDataInicio)
+	if err != nil {
+		return 0, "", err
+	}
+	limite := antes.AddDate(0, 0, -7*semanas).Format("2006-01-02")
+
+	countQ := db.QueryForDriver(
+		`SELECT COUNT(*)
+		 FROM desig_designacoes d
+		 JOIN desig_partes p ON p.id = d.parte_id
+		 JOIN desig_tipos_parte t ON t.id = p.tipo_parte_id
+		 JOIN desig_semanas s ON s.id = p.semana_id
+		 WHERE s.tenant_id = $1 AND d.pessoa_id = $2 AND t.codigo = $3
+		   AND s.data_inicio < $4 AND s.data_inicio >= $5`,
+		r.driver,
+	)
+	var count int
+	if err := r.db.QueryRow(countQ, tenantID, pessoaID, tipoCodigo, antesDeDataInicio, limite).Scan(&count); err != nil {
+		return 0, "", err
+	}
+
+	lastQ := db.QueryForDriver(
+		`SELECT MAX(s.data_inicio)
+		 FROM desig_designacoes d
+		 JOIN desig_partes p ON p.id = d.parte_id
+		 JOIN desig_tipos_parte t ON t.id = p.tipo_parte_id
+		 JOIN desig_semanas s ON s.id = p.semana_id
+		 WHERE s.tenant_id = $1 AND d.pessoa_id = $2 AND t.codigo = $3
+		   AND s.data_inicio < $4`,
+		r.driver,
+	)
+	var ultima sql.NullString
+	if err := r.db.QueryRow(lastQ, tenantID, pessoaID, tipoCodigo, antesDeDataInicio).Scan(&ultima); err != nil {
+		return 0, "", err
+	}
+	if !ultima.Valid {
+		return count, "", nil
+	}
+	return count, normalizeDate(ultima.String), nil
+}
+
 func (r *DesignacaoRepository) DesignadoNaSemanaAnterior(tenantID, pessoaID, dataInicioAtual string) (bool, error) {
 	inicio, err := time.Parse("2006-01-02", dataInicioAtual)
 	if err != nil {

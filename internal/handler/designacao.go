@@ -670,6 +670,9 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var out []model.DesigCandidato
+	rotacaoMesmoTipo := parte.TipoCodigo == "presidente" ||
+		parte.TipoCodigo == "tesouros" ||
+		parte.TipoCodigo == "estudo_biblico"
 	for _, p := range pessoas {
 		c := model.DesigCandidato{DesigPessoa: p}
 		elegivel, motivo := service.PessoaElegivelParaParte(p, parte.TipoCodigo, papel, donoSexo)
@@ -681,16 +684,39 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 			c.Elegivel = false
 			c.MotivoInelegivel = "Já designado em outra parte nesta semana"
 		}
-		count, _, _ := h.repo.ContagemDesignacoesRecentes(tenantID, p.ID, semana.DataInicio, 8)
+		// Tesouros: limitados podem, mas só por decisão manual do designador.
+		if parte.TipoCodigo == "tesouros" && p.Capacidade == "limitado" && c.Elegivel {
+			c.SomenteManual = true
+		}
+		var count int
+		var ultima string
+		if rotacaoMesmoTipo {
+			count, ultima, _ = h.repo.HistoricoTipoParte(
+				tenantID, p.ID, parte.TipoCodigo, semana.DataInicio, 7,
+			)
+		} else {
+			count, _, _ = h.repo.ContagemDesignacoesRecentes(tenantID, p.ID, semana.DataInicio, 8)
+			ultima, _ = h.repo.UltimaDesignacaoAntes(tenantID, p.ID, semana.DataInicio)
+		}
 		c.DesignacoesUltimas8Semanas = count
-		ultima, _ := h.repo.UltimaDesignacaoAntes(tenantID, p.ID, semana.DataInicio)
 		c.UltimaSemanaDesignado = ultima
-		if prev, _ := h.repo.DesignadoNaSemanaAnterior(tenantID, p.ID, semana.DataInicio); prev {
+		if rotacaoMesmoTipo {
+			if ultima == "" {
+				c.Alerta = "Nunca fez esta parte — prioridade"
+			} else if isSemanaAnterior(ultima, semana.DataInicio) {
+				c.Alerta = "Fez esta parte na semana anterior"
+			} else {
+				c.Alerta = "Última nesta parte: " + formatUltimaRotulo(ultima)
+			}
+		} else if prev, _ := h.repo.DesignadoNaSemanaAnterior(tenantID, p.ID, semana.DataInicio); prev {
 			c.Alerta = "Designado na semana anterior"
 		} else if ultima == "" {
 			c.Alerta = "Nunca designado — prioridade"
 		} else {
 			c.Alerta = "Última: " + formatUltimaRotulo(ultima)
+		}
+		if c.SomenteManual {
+			c.Alerta = "Capacidade limitada — designar só por sua decisão"
 		}
 		out = append(out, c)
 	}
@@ -699,6 +725,9 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		a, b := out[i], out[j]
 		if a.Elegivel != b.Elegivel {
 			return a.Elegivel
+		}
+		if a.SomenteManual != b.SomenteManual {
+			return !a.SomenteManual
 		}
 		if a.UltimaSemanaDesignado != b.UltimaSemanaDesignado {
 			if a.UltimaSemanaDesignado == "" {
@@ -715,6 +744,15 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		return a.Nome < b.Nome
 	})
 	writeJSON(w, http.StatusOK, out)
+}
+
+func isSemanaAnterior(ultima, atual string) bool {
+	ultimaData, errUltima := time.Parse("2006-01-02", ultima)
+	atualData, errAtual := time.Parse("2006-01-02", atual)
+	if errUltima != nil || errAtual != nil {
+		return false
+	}
+	return ultimaData.Equal(atualData.AddDate(0, 0, -7))
 }
 
 func formatUltimaRotulo(dataInicio string) string {

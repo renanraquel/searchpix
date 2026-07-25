@@ -78,6 +78,7 @@ type DesigCandidato struct {
 	DesigPessoa
 	Elegivel                   bool   `json:"elegivel"`
 	MotivoInelegivel           string `json:"motivo_inelegivel,omitempty"`
+	SomenteManual              bool   `json:"somente_manual"`
 	DesignacoesUltimas8Semanas int    `json:"designacoes_ultimas_8_semanas"`
 	UltimaSemanaDesignado      string `json:"ultima_semana_designado,omitempty"`
 	Alerta                     string `json:"alerta,omitempty"`
