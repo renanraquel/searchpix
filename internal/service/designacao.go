@@ -40,7 +40,8 @@ func FormatWeekRotulo(inicio, fim time.Time) string {
 }
 
 // FormatWhatsAppMessage monta a mensagem no modelo combinado.
-func FormatWhatsAppMessage(rotulo, titulo string, duracaoMin int, tema, nomePessoa string) string {
+// Se houver ajudante, inclui dono e ajudante na mesma mensagem.
+func FormatWhatsAppMessage(rotulo, titulo string, duracaoMin int, tema, nomeDono, nomeAjudante string) string {
 	linhaParte := titulo
 	if duracaoMin > 0 {
 		linhaParte = fmt.Sprintf("%s (%d min)", titulo, duracaoMin)
@@ -48,10 +49,19 @@ func FormatWhatsAppMessage(rotulo, titulo string, duracaoMin int, tema, nomePess
 	if strings.TrimSpace(tema) != "" {
 		linhaParte = linhaParte + " " + strings.TrimSpace(tema)
 	}
-	saudacao := "Boa tarde"
+	var blocoNomes string
+	if strings.TrimSpace(nomeAjudante) != "" {
+		blocoNomes = fmt.Sprintf(
+			"Dono da parte: %s\nAjudante: %s",
+			strings.TrimSpace(nomeDono),
+			strings.TrimSpace(nomeAjudante),
+		)
+	} else {
+		blocoNomes = fmt.Sprintf("Nome do irmão designado: %s.", strings.TrimSpace(nomeDono))
+	}
 	return fmt.Sprintf(
-		"%s. Designação semana %s\n%s\nNome do irmão designado: %s.\nAssim que receber essa mensagem me confirme por favor. Obrigado",
-		saudacao, rotulo, linhaParte, nomePessoa,
+		"Boa tarde. Designação semana %s\n%s\n%s\nAssim que receber essa mensagem me confirme por favor. Obrigado",
+		rotulo, linhaParte, blocoNomes,
 	)
 }
 

@@ -800,6 +800,19 @@ func (h *DesignacaoHandler) Lembretes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, parte := range partes {
+		var nomeDono, nomeAjudante string
+		for _, d := range parte.Designacoes {
+			nome := d.PessoaNome
+			if pessoa, _ := h.repo.GetPessoaByID(d.PessoaID); pessoa != nil {
+				nome = pessoa.Nome
+			}
+			if d.Papel == "dono" {
+				nomeDono = nome
+			} else if d.Papel == "ajudante" {
+				nomeAjudante = nome
+			}
+		}
+		msg := service.FormatWhatsAppMessage(semana.Rotulo, parte.Titulo, parte.DuracaoMin, parte.Tema, nomeDono, nomeAjudante)
 		for _, d := range parte.Designacoes {
 			pessoa, _ := h.repo.GetPessoaByID(d.PessoaID)
 			nome := d.PessoaNome
@@ -808,7 +821,6 @@ func (h *DesignacaoHandler) Lembretes(w http.ResponseWriter, r *http.Request) {
 				nome = pessoa.Nome
 				tel = pessoa.Telefone
 			}
-			msg := service.FormatWhatsAppMessage(semana.Rotulo, parte.Titulo, parte.DuracaoMin, parte.Tema, nome)
 			resp.Itens = append(resp.Itens, model.DesigLembreteItem{
 				ParteID:          parte.ID,
 				Titulo:           parte.Titulo,
@@ -825,7 +837,8 @@ func (h *DesignacaoHandler) Lembretes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// WhatsApp GET /api/desig/whatsapp?parte_id=&papel=
+// WhatsApp GET /api/desig/whatsapp?parte_id=
+// Monta uma única mensagem com dono e, se houver, ajudante.
 func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -836,10 +849,6 @@ func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parteID := r.URL.Query().Get("parte_id")
-	papel := r.URL.Query().Get("papel")
-	if papel == "" {
-		papel = "dono"
-	}
 	parte, err := h.repo.GetParteByID(parteID)
 	if err != nil || parte == nil {
 		http.Error(w, "Parte não encontrada", http.StatusNotFound)
@@ -850,25 +859,44 @@ func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Parte não encontrada", http.StatusNotFound)
 		return
 	}
-	var nome, telefone string
+	var nomeDono, nomeAjudante, telefone, pessoaNome string
 	for _, d := range parte.Designacoes {
-		if d.Papel == papel {
-			nome = d.PessoaNome
-			if pessoa, _ := h.repo.GetPessoaByID(d.PessoaID); pessoa != nil {
-				nome = pessoa.Nome
-				telefone = pessoa.Telefone
+		nome := d.PessoaNome
+		tel := ""
+		if pessoa, _ := h.repo.GetPessoaByID(d.PessoaID); pessoa != nil {
+			nome = pessoa.Nome
+			tel = pessoa.Telefone
+		}
+		if d.Papel == "dono" {
+			nomeDono = nome
+			if telefone == "" {
+				telefone = tel
 			}
-			break
+			pessoaNome = nome
+		} else if d.Papel == "ajudante" {
+			nomeAjudante = nome
+			if telefone == "" {
+				telefone = tel
+			}
+			if pessoaNome == "" {
+				pessoaNome = nome
+			} else {
+				pessoaNome = nomeDono + " com " + nomeAjudante
+			}
 		}
 	}
-	if nome == "" {
-		http.Error(w, "Ninguém designado neste papel", http.StatusBadRequest)
+	if nomeDono == "" {
+		http.Error(w, "Ninguém designado como dono da parte", http.StatusBadRequest)
 		return
 	}
-	msg := service.FormatWhatsAppMessage(semana.Rotulo, parte.Titulo, parte.DuracaoMin, parte.Tema, nome)
+	if parte.PermiteAjudante && nomeAjudante == "" {
+		http.Error(w, "Designação incompleta: falta o ajudante", http.StatusBadRequest)
+		return
+	}
+	msg := service.FormatWhatsAppMessage(semana.Rotulo, parte.Titulo, parte.DuracaoMin, parte.Tema, nomeDono, nomeAjudante)
 	writeJSON(w, http.StatusOK, model.DesigWhatsAppResponse{
 		Mensagem:   msg,
-		PessoaNome: nome,
+		PessoaNome: pessoaNome,
 		Telefone:   telefone,
 	})
 }
