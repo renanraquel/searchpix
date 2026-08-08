@@ -9,6 +9,7 @@ import (
 	"searchpix/internal/config"
 	"searchpix/internal/db"
 	"searchpix/internal/handler"
+	"searchpix/internal/r2"
 	"searchpix/internal/repository"
 	"searchpix/internal/seed"
 	"searchpix/internal/service"
@@ -50,6 +51,24 @@ func main() {
 	seed.Run(tenantRepo, userRepo)
 	seed.RunAdminAndDesignacao(tenantRepo, userRepo, desigRepo)
 
+	r2Client, err := r2.New(r2.Config{
+		AccountID:       cfg.R2.AccountID,
+		AccessKeyID:     cfg.R2.AccessKeyID,
+		SecretAccessKey: cfg.R2.SecretAccessKey,
+		Bucket:          cfg.R2.Bucket,
+		PublicBaseURL:   cfg.R2.PublicBaseURL,
+		Endpoint:        cfg.R2.Endpoint,
+	})
+	if err != nil {
+		log.Fatal("Erro ao configurar R2:", err)
+	}
+	if r2Client != nil {
+		log.Println("R2 configurado para mídia do carrossel")
+		seed.MigrateCarouselToR2(carouselRepo, r2Client)
+	} else {
+		log.Println("R2 não configurado — carrossel usa armazenamento local (BYTEA)")
+	}
+
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
 	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo)
@@ -63,7 +82,7 @@ func main() {
 	publicNfce := handler.NewPublicNFCeHandler(tenantRepo, customerRepo, nfceClaimRepo, nfceEmitterRepo, pointsSvc)
 	pageVisitHandler := handler.NewPageVisitHandler(pageVisitRepo)
 	bootstrapHandler := handler.NewBootstrapHandler(tenantRepo, userRepo)
-	carouselHandler := handler.NewCarouselHandler(carouselRepo)
+	carouselHandler := handler.NewCarouselHandler(carouselRepo, r2Client)
 	desigHandler := handler.NewDesignacaoHandler(desigRepo)
 
 	// ---------- Rotas públicas (fidelização) ----------

@@ -20,10 +20,21 @@ type DBConfig struct {
 	URL    string // DSN completo ou "file::memory:?cache=shared" para SQLite em memória
 }
 
+// R2Config Cloudflare R2 (carrossel / mídia pública).
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+	PublicBaseURL   string
+	Endpoint        string
+}
+
 type Config struct {
 	BB    BBConfig
 	DB    DBConfig
 	Email EmailConfig
+	R2    R2Config
 	Port  string
 }
 
@@ -90,6 +101,14 @@ func Load() *Config {
 			SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
 			From:           emailFrom,
 			PublicUIOrigin: strings.TrimSpace(os.Getenv("PUBLIC_UI_ORIGIN")),
+		},
+		R2: R2Config{
+			AccountID:       strings.TrimSpace(os.Getenv("R2_ACCOUNT_ID")),
+			AccessKeyID:     strings.TrimSpace(os.Getenv("R2_ACCESS_KEY_ID")),
+			SecretAccessKey: strings.TrimSpace(os.Getenv("R2_SECRET_ACCESS_KEY")),
+			Bucket:          strings.TrimSpace(os.Getenv("R2_BUCKET")),
+			PublicBaseURL:   strings.TrimSpace(os.Getenv("R2_PUBLIC_BASE_URL")),
+			Endpoint:        strings.TrimSpace(os.Getenv("R2_ENDPOINT")),
 		},
 		Port: os.Getenv("SERVER_PORT"),
 	}

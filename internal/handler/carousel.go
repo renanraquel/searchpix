@@ -2,26 +2,31 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"searchpix/internal/auth"
+	"searchpix/internal/r2"
 	"searchpix/internal/repository"
 )
 
 // carouselPublicEnabled controla a tela pública de TV (/carrossel-tv).
-// Desligado temporariamente por alto consumo de banda — religar quando houver solução.
-const carouselPublicEnabled = false
+// Mídia sai do R2/CDN — banda do Render fica só no JSON da playlist.
+const carouselPublicEnabled = true
 
 type CarouselHandler struct {
 	repo *repository.CarouselRepository
+	r2   *r2.Client
 }
 
-func NewCarouselHandler(repo *repository.CarouselRepository) *CarouselHandler {
-	return &CarouselHandler{repo: repo}
+func NewCarouselHandler(repo *repository.CarouselRepository, r2Client *r2.Client) *CarouselHandler {
+	return &CarouselHandler{repo: repo, r2: r2Client}
 }
 
 func writeCarouselPublicDisabled(w http.ResponseWriter) {
@@ -83,7 +88,31 @@ func (h *CarouselHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Arquivo inválido ou vazio", http.StatusBadRequest)
 		return
 	}
-	item, err := h.repo.Create(tenantID, mediaType, "", sortOrder, mediaData, ct)
+
+	storageKey, mediaURL := "", ""
+	var blob []byte
+	if h.r2 != nil {
+		itemID := uuid.New().String()
+		key := r2.CarouselObjectKey(tenantID, itemID, ct)
+		sk, url, err := h.r2.UploadWithTimeout(key, mediaData, ct)
+		if err != nil {
+			http.Error(w, "Falha ao enviar mídia para o R2: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		storageKey, mediaURL = sk, url
+		item, err := h.repo.CreateWithID(itemID, tenantID, mediaType, "", sortOrder, nil, ct, storageKey, mediaURL)
+		if err != nil {
+			_ = h.r2.DeleteObject(context.Background(), storageKey)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(item)
+		return
+	}
+	blob = mediaData
+	item, err := h.repo.Create(tenantID, mediaType, "", sortOrder, blob, ct, storageKey, mediaURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -118,6 +147,10 @@ func (h *CarouselHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sortOrder := existing.SortOrder
+	storageKey, mediaURL := existing.StorageKey, ""
+	if strings.HasPrefix(existing.MediaURL, "http") {
+		mediaURL = existing.MediaURL
+	}
 	var mediaData []byte
 	var contentType, mediaType string
 	file, header, err := r.FormFile("media")
@@ -136,8 +169,23 @@ func (h *CarouselHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		contentType = ct
 		mediaType = mt
+		if h.r2 != nil {
+			key := r2.CarouselObjectKey(tenantID, id, ct)
+			sk, url, upErr := h.r2.UploadWithTimeout(key, mediaData, ct)
+			if upErr != nil {
+				http.Error(w, "Falha ao enviar mídia para o R2: "+upErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			if existing.StorageKey != "" && existing.StorageKey != sk {
+				_ = h.r2.DeleteObject(context.Background(), existing.StorageKey)
+			}
+			storageKey, mediaURL = sk, url
+			mediaData = nil
+		}
+	} else {
+		mediaType = existing.MediaType
 	}
-	updated, err := h.repo.Update(id, existing.Title, sortOrder, mediaData, contentType, mediaType)
+	updated, err := h.repo.Update(id, existing.Title, sortOrder, mediaData, contentType, mediaType, storageKey, mediaURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -220,6 +268,9 @@ func (h *CarouselHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if existing != nil && existing.TenantID != tenantID {
 		http.Error(w, "Item não encontrado", http.StatusNotFound)
 		return
+	}
+	if existing != nil && h.r2 != nil && existing.StorageKey != "" {
+		_ = h.r2.DeleteObject(context.Background(), existing.StorageKey)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -305,7 +356,7 @@ func (h *CarouselHandler) PublicGet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// PublicServeMedia entrega mídia do carrossel (sem autenticação).
+// PublicServeMedia entrega mídia legada (BYTEA) ou redireciona para R2.
 func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -321,9 +372,13 @@ func (h *CarouselHandler) PublicServeMedia(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "id e tenant são obrigatórios", http.StatusBadRequest)
 		return
 	}
-	data, contentType, _, updatedAt, err := h.repo.GetMediaByIDAndTenantSlug(id, tenantSlug)
+	data, contentType, _, mediaURL, updatedAt, err := h.repo.GetMediaByIDAndTenantSlug(id, tenantSlug)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if strings.HasPrefix(mediaURL, "http://") || strings.HasPrefix(mediaURL, "https://") {
+		http.Redirect(w, r, mediaURL, http.StatusFound)
 		return
 	}
 	if len(data) == 0 {
@@ -348,7 +403,6 @@ func serveCarouselBytes(w http.ResponseWriter, r *http.Request, data []byte, con
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	// ServeContent habilita HTTP Range (206) — necessário para <video> no Safari/iOS.
 	if modTime.IsZero() {
 		modTime = time.Now()
 	}

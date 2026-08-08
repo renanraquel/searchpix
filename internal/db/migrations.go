@@ -123,8 +123,10 @@ func migratePostgres(db *sql.DB) error {
 			media_type VARCHAR(10) NOT NULL CHECK (media_type IN ('image', 'video')),
 			title TEXT,
 			sort_order INTEGER NOT NULL DEFAULT 0,
-			media_data BYTEA NOT NULL,
-			content_type VARCHAR(100) NOT NULL,
+			media_data BYTEA,
+			content_type VARCHAR(100) NOT NULL DEFAULT '',
+			storage_key TEXT,
+			media_url TEXT,
 			created_at TIMESTAMPTZ DEFAULT NOW(),
 			updated_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
@@ -229,6 +231,9 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'tenant'`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
+		`ALTER TABLE carousel_items ADD COLUMN storage_key TEXT`,
+		`ALTER TABLE carousel_items ADD COLUMN media_url TEXT`,
+		`ALTER TABLE carousel_items ALTER COLUMN media_data DROP NOT NULL`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -344,8 +349,10 @@ func migrateSQLite(db *sql.DB) error {
 			media_type TEXT NOT NULL CHECK (media_type IN ('image', 'video')),
 			title TEXT,
 			sort_order INTEGER NOT NULL DEFAULT 0,
-			media_data BLOB NOT NULL,
-			content_type TEXT NOT NULL,
+			media_data BLOB,
+			content_type TEXT NOT NULL DEFAULT '',
+			storage_key TEXT,
+			media_url TEXT,
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		)`,
@@ -449,6 +456,8 @@ func migrateSQLite(db *sql.DB) error {
 		`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'tenant'`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
+		`ALTER TABLE carousel_items ADD COLUMN storage_key TEXT`,
+		`ALTER TABLE carousel_items ADD COLUMN media_url TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

@@ -7,6 +7,7 @@ type CarouselItem struct {
 	MediaType   string   `json:"media_type"` // "image" | "video"
 	Title       string   `json:"title,omitempty"`
 	MediaURL    string   `json:"media_url"`
+	StorageKey  string   `json:"storage_key,omitempty"`
 	SortOrder   int      `json:"sort_order"`
 	CreatedAt   FlexTime `json:"created_at"`
 	UpdatedAt   FlexTime `json:"updated_at"`
