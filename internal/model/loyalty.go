@@ -6,9 +6,9 @@ type Tenant struct {
 	Slug string `json:"slug"`
 	// CNPJ do emitente nas NFC-e (14 dígitos), para validar notas na rota pública /nfce-points.
 	NfceEmitterCNPJ string `json:"nfce_emitter_cnpj,omitempty"`
-	// URL pública da imagem de fundo (montada na API, não vem do banco)
-	BackgroundImageURL string   `json:"background_image_url,omitempty"`
-	CreatedAt          FlexTime `json:"created_at"`
+	BackgroundImageURL string `json:"background_image_url,omitempty"`
+	BackgroundStorageKey string `json:"-"`
+	CreatedAt            FlexTime `json:"created_at"`
 }
 
 const (
@@ -36,6 +36,7 @@ type Product struct {
 	ID             string   `json:"id"`
 	TenantID       string   `json:"tenant_id"`
 	ImageURL       string   `json:"image_url"`
+	StorageKey     string   `json:"-"`
 	Description    string   `json:"description"`
 	PointsRequired int      `json:"points_required"`
 	CreatedAt      FlexTime `json:"created_at"`

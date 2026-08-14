@@ -113,6 +113,16 @@ func CarouselObjectKey(tenantID, itemID, contentType string) string {
 	return path.Join("carousel", tenantID, itemID+ext)
 }
 
+func ProductObjectKey(tenantID, productID, contentType string) string {
+	ext := extensionForContentType(contentType)
+	return path.Join("products", tenantID, productID+ext)
+}
+
+func TenantBackgroundKey(tenantID, contentType string) string {
+	ext := extensionForContentType(contentType)
+	return path.Join("tenants", tenantID, "background"+ext)
+}
+
 func extensionForContentType(contentType string) string {
 	ct := strings.ToLower(strings.TrimSpace(contentType))
 	switch {

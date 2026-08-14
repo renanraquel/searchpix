@@ -26,6 +26,8 @@ func migratePostgres(db *sql.DB) error {
 			slug TEXT NOT NULL UNIQUE,
 			background_image_data BYTEA,
 			background_image_content_type VARCHAR(100),
+			background_storage_key TEXT,
+			background_image_url TEXT,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
@@ -43,6 +45,7 @@ func migratePostgres(db *sql.DB) error {
 			image_url TEXT,
 			image_data BYTEA,
 			image_content_type VARCHAR(100),
+			image_storage_key TEXT,
 			description TEXT NOT NULL,
 			points_required INTEGER NOT NULL CHECK (points_required > 0),
 			created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -234,6 +237,9 @@ func migratePostgres(db *sql.DB) error {
 		`ALTER TABLE carousel_items ADD COLUMN storage_key TEXT`,
 		`ALTER TABLE carousel_items ADD COLUMN media_url TEXT`,
 		`ALTER TABLE carousel_items ALTER COLUMN media_data DROP NOT NULL`,
+		`ALTER TABLE products ADD COLUMN image_storage_key TEXT`,
+		`ALTER TABLE tenants ADD COLUMN background_storage_key TEXT`,
+		`ALTER TABLE tenants ADD COLUMN background_image_url TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
@@ -252,6 +258,8 @@ func migrateSQLite(db *sql.DB) error {
 			slug TEXT NOT NULL UNIQUE,
 			background_image_data BLOB,
 			background_image_content_type TEXT,
+			background_storage_key TEXT,
+			background_image_url TEXT,
 			created_at TEXT DEFAULT (datetime('now'))
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
@@ -269,6 +277,7 @@ func migrateSQLite(db *sql.DB) error {
 			image_url TEXT,
 			image_data BLOB,
 			image_content_type TEXT,
+			image_storage_key TEXT,
 			description TEXT NOT NULL,
 			points_required INTEGER NOT NULL CHECK (points_required > 0),
 			created_at TEXT DEFAULT (datetime('now')),
@@ -458,6 +467,9 @@ func migrateSQLite(db *sql.DB) error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)`,
 		`ALTER TABLE carousel_items ADD COLUMN storage_key TEXT`,
 		`ALTER TABLE carousel_items ADD COLUMN media_url TEXT`,
+		`ALTER TABLE products ADD COLUMN image_storage_key TEXT`,
+		`ALTER TABLE tenants ADD COLUMN background_storage_key TEXT`,
+		`ALTER TABLE tenants ADD COLUMN background_image_url TEXT`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

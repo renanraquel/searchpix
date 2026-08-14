@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,9 +9,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"searchpix/internal/auth"
 	"searchpix/internal/model"
 	"searchpix/internal/nfcepr"
+	"searchpix/internal/r2"
 	"searchpix/internal/repository"
 	"searchpix/internal/service"
 
@@ -23,10 +27,11 @@ type TenantHandler struct {
 	repo            *repository.TenantRepository
 	nfceEmitterRepo *repository.NfceEmitterRepository
 	userRepo        *repository.UserRepository
+	r2              *r2.Client
 }
 
-func NewTenantHandler(repo *repository.TenantRepository, nfceEmitterRepo *repository.NfceEmitterRepository, userRepo *repository.UserRepository) *TenantHandler {
-	return &TenantHandler{repo: repo, nfceEmitterRepo: nfceEmitterRepo, userRepo: userRepo}
+func NewTenantHandler(repo *repository.TenantRepository, nfceEmitterRepo *repository.NfceEmitterRepository, userRepo *repository.UserRepository, r2Client *r2.Client) *TenantHandler {
+	return &TenantHandler{repo: repo, nfceEmitterRepo: nfceEmitterRepo, userRepo: userRepo, r2: r2Client}
 }
 
 func (h *TenantHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +219,24 @@ func (h *TenantHandler) SetBackground(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Imagem vazia", http.StatusBadRequest)
 		return
 	}
+	existing, _ := h.repo.GetByID(tenantID)
+	if h.r2 != nil {
+		key := r2.TenantBackgroundKey(tenantID, ct)
+		sk, url, err := h.r2.UploadWithTimeout(key, data, ct)
+		if err != nil {
+			http.Error(w, "Falha ao enviar imagem para o R2: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := h.repo.UpdateBackgroundR2(tenantID, sk, url, ct); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if existing != nil && existing.BackgroundStorageKey != "" && existing.BackgroundStorageKey != sk {
+			_ = h.r2.DeleteObject(context.Background(), existing.BackgroundStorageKey)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if err := h.repo.UpdateBackground(tenantID, data, ct); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -225,14 +248,35 @@ func (h *TenantHandler) SetBackground(w http.ResponseWriter, r *http.Request) {
 
 type ProductHandler struct {
 	repo *repository.ProductRepository
+	r2   *r2.Client
 }
 
-func NewProductHandler(repo *repository.ProductRepository) *ProductHandler {
-	return &ProductHandler{repo: repo}
+func NewProductHandler(repo *repository.ProductRepository, r2Client *r2.Client) *ProductHandler {
+	return &ProductHandler{repo: repo, r2: r2Client}
 }
 
-// ServeImage retorna a imagem do produto armazenada no banco (GET /api/products/image?id=xxx).
-// Rota pública para que <img src="..."> funcione sem envio de Authorization (imagens de produto não são sensíveis).
+func isHTTPURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+func writeStoredImage(w http.ResponseWriter, r *http.Request, publicURL string, data []byte, contentType string) {
+	if isHTTPURL(publicURL) {
+		http.Redirect(w, r, publicURL, http.StatusFound)
+		return
+	}
+	if len(data) == 0 {
+		http.Error(w, "Imagem não encontrada", http.StatusNotFound)
+		return
+	}
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Write(data)
+}
+
+// ServeImage retorna a imagem do produto (GET /api/products/image?id=xxx).
+// Com R2, redireciona para a URL pública.
 func (h *ProductHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
@@ -243,17 +287,16 @@ func (h *ProductHandler) ServeImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id é obrigatório", http.StatusBadRequest)
 		return
 	}
-	data, contentType, err := h.repo.GetImageByProductID(id)
+	meta, err := h.repo.GetImageMetaByProductID(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if len(data) == 0 {
+	if meta == nil {
 		http.Error(w, "Imagem não encontrada", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Write(data)
+	writeStoredImage(w, r, meta.PublicURL, meta.Data, meta.ContentType)
 }
 
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -327,7 +370,28 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "description e points_required (maior que 0) são obrigatórios", http.StatusBadRequest)
 		return
 	}
-	product, err := h.repo.Create(tenantID, imageURL, description, pointsRequired, imageData, imageContentType)
+	storageKey := ""
+	if len(imageData) > 0 && h.r2 != nil {
+		itemID := uuid.New().String()
+		key := r2.ProductObjectKey(tenantID, itemID, imageContentType)
+		sk, url, err := h.r2.UploadWithTimeout(key, imageData, imageContentType)
+		if err != nil {
+			http.Error(w, "Falha ao enviar imagem para o R2: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		storageKey, imageURL = sk, url
+		product, err := h.repo.CreateWithID(itemID, tenantID, imageURL, description, pointsRequired, nil, imageContentType, storageKey)
+		if err != nil {
+			_ = h.r2.DeleteObject(context.Background(), storageKey)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(product)
+		return
+	}
+	product, err := h.repo.Create(tenantID, imageURL, description, pointsRequired, imageData, imageContentType, storageKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -405,7 +469,24 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "description e points_required (maior que 0) são obrigatórios", http.StatusBadRequest)
 		return
 	}
-	updated, err := h.repo.Update(id, imageURL, description, pointsRequired, imageData, imageContentType)
+	storageKey := product.StorageKey
+	replaceImage := len(imageData) > 0
+	if replaceImage && h.r2 != nil {
+		key := r2.ProductObjectKey(tenantID, id, imageContentType)
+		sk, url, err := h.r2.UploadWithTimeout(key, imageData, imageContentType)
+		if err != nil {
+			http.Error(w, "Falha ao enviar imagem para o R2: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if product.StorageKey != "" && product.StorageKey != sk {
+			_ = h.r2.DeleteObject(context.Background(), product.StorageKey)
+		}
+		storageKey, imageURL = sk, url
+		imageData = nil
+	} else if replaceImage && imageURL == "" {
+		imageURL = product.ImageURL
+	}
+	updated, err := h.repo.Update(id, imageURL, description, pointsRequired, imageData, imageContentType, storageKey, replaceImage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -433,6 +514,9 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if product != nil && product.TenantID != tenantID {
 		http.Error(w, "Produto não encontrado", http.StatusNotFound)
 		return
+	}
+	if product != nil && h.r2 != nil && product.StorageKey != "" {
+		_ = h.r2.DeleteObject(context.Background(), product.StorageKey)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -818,8 +902,12 @@ func (h *PublicRedemptionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Estabelecimento não encontrado", http.StatusNotFound)
 		return
 	}
-	// URL da imagem de fundo (o endpoint decide se há imagem ou não; se não houver, o navegador só não exibirá nada)
-	tenant.BackgroundImageURL = "/api/public/tenant-background?tenant=" + slug
+	// URL da imagem de fundo: R2 quando já migrada; senão endpoint legado.
+	if isHTTPURL(tenant.BackgroundImageURL) {
+		// já é URL absoluta
+	} else {
+		tenant.BackgroundImageURL = "/api/public/tenant-background?tenant=" + slug
+	}
 	tenant.NfceEmitterCNPJ = "" // não expor CNPJ em endpoint público
 	products, _ := h.productRepo.ListByTenant(tenant.ID)
 	sort.Slice(products, func(i, j int) bool { return products[i].PointsRequired < products[j].PointsRequired })
@@ -861,17 +949,16 @@ func (h *PublicRedemptionHandler) ServeProductImage(w http.ResponseWriter, r *ht
 		http.Error(w, "Estabelecimento não encontrado", http.StatusNotFound)
 		return
 	}
-	data, contentType, err := h.productRepo.GetImageByID(id, tenant.ID)
+	meta, err := h.productRepo.GetImageMetaByID(id, tenant.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if len(data) == 0 {
+	if meta == nil {
 		http.Error(w, "Imagem não encontrada", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Write(data)
+	writeStoredImage(w, r, meta.PublicURL, meta.Data, meta.ContentType)
 }
 
 // ServeTenantBackground retorna a imagem de fundo do tenant para a tela pública
@@ -885,17 +972,16 @@ func (h *PublicRedemptionHandler) ServeTenantBackground(w http.ResponseWriter, r
 		http.Error(w, "tenant é obrigatório", http.StatusBadRequest)
 		return
 	}
-	data, contentType, err := h.tenantRepo.GetBackgroundBySlug(slug)
+	meta, err := h.tenantRepo.GetBackgroundMetaBySlug(slug)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if len(data) == 0 {
+	if meta == nil {
 		http.Error(w, "Imagem não encontrada", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Write(data)
+	writeStoredImage(w, r, meta.PublicURL, meta.Data, meta.ContentType)
 }
 
 // RedeemProduct resgate por cliente (público - identificado por cpf + tenant)

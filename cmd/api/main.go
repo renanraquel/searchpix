@@ -63,17 +63,18 @@ func main() {
 		log.Fatal("Erro ao configurar R2:", err)
 	}
 	if r2Client != nil {
-		log.Println("R2 configurado para mídia do carrossel")
+		log.Println("R2 configurado para mídia (carrossel, produtos e fundo)")
 		seed.MigrateCarouselToR2(carouselRepo, r2Client)
+		seed.MigrateLoyaltyImagesToR2(productRepo, tenantRepo, r2Client)
 	} else {
-		log.Println("R2 não configurado — carrossel usa armazenamento local (BYTEA)")
+		log.Println("R2 não configurado — mídia usa armazenamento local (BYTEA)")
 	}
 
 	pointsSvc := service.NewLoyaltyPointsService(customerRepo, productRepo, pointsRepo, redemptionRepo)
 
-	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo)
+	tenantHandler := handler.NewTenantHandler(tenantRepo, nfceEmitterRepo, userRepo, r2Client)
 	merchantSignup := handler.NewMerchantSignupHandler(tenantRepo, userRepo, cfg.Email)
-	productHandler := handler.NewProductHandler(productRepo)
+	productHandler := handler.NewProductHandler(productRepo, r2Client)
 	customerHandler := handler.NewCustomerHandler(customerRepo)
 	pointsHandler := handler.NewPointsHandler(customerRepo, pointsSvc)
 	redemptionListHandler := handler.NewRedemptionListHandler(redemptionRepo)
