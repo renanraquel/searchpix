@@ -271,8 +271,8 @@ func (h *DesignacaoHandler) CreateSemana(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var req struct {
-		Data       string `json:"data"` // qualquer data na semana ou da reunião
-		ComPartesFixas bool `json:"com_partes_fixas"`
+		Data           string `json:"data"` // qualquer data na semana ou da reunião
+		ComPartesFixas bool   `json:"com_partes_fixas"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Requisição inválida", http.StatusBadRequest)
@@ -655,10 +655,18 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Parte não encontrada", http.StatusNotFound)
 		return
 	}
-	pessoas, err := h.repo.ListPessoas(tenantID, true)
+	out, err := h.rankCandidatos(tenantID, semana, parte, papel)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *DesignacaoHandler) rankCandidatos(tenantID string, semana *model.DesigSemana, parte *model.DesigParte, papel string) ([]model.DesigCandidato, error) {
+	pessoas, err := h.repo.ListPessoas(tenantID, true)
+	if err != nil {
+		return nil, err
 	}
 	donoSexo := ""
 	for _, d := range parte.Designacoes {
@@ -678,13 +686,12 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		elegivel, motivo := service.PessoaElegivelParaParte(p, parte.TipoCodigo, papel, donoSexo)
 		c.Elegivel = elegivel
 		c.MotivoInelegivel = motivo
-		ja, _, _ := h.repo.PessoaJaDesignadaNaSemana(semana.ID, p.ID, parteID)
+		ja, _, _ := h.repo.PessoaJaDesignadaNaSemana(semana.ID, p.ID, parte.ID)
 		c.JaDesignadoNaSemana = ja
 		if ja {
 			c.Elegivel = false
 			c.MotivoInelegivel = "Já designado em outra parte nesta semana"
 		}
-		// Tesouros: limitados podem, mas só por decisão manual do designador.
 		if parte.TipoCodigo == "tesouros" && p.Capacidade == "limitado" && c.Elegivel {
 			c.SomenteManual = true
 		}
@@ -720,7 +727,6 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, c)
 	}
-	// Sugestão: elegíveis primeiro; quem está há mais tempo sem parte (ou nunca) sobe na lista.
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
 		if a.Elegivel != b.Elegivel {
@@ -743,7 +749,18 @@ func (h *DesignacaoHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
 		}
 		return a.Nome < b.Nome
 	})
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
+}
+
+func pickAutoCandidato(cands []model.DesigCandidato) *model.DesigPessoa {
+	for i := range cands {
+		c := &cands[i]
+		if c.Elegivel && !c.SomenteManual {
+			p := c.DesigPessoa
+			return &p
+		}
+	}
+	return nil
 }
 
 func isSemanaAnterior(ultima, atual string) bool {
@@ -899,4 +916,233 @@ func (h *DesignacaoHandler) WhatsApp(w http.ResponseWriter, r *http.Request) {
 		PessoaNome: pessoaNome,
 		Telefone:   telefone,
 	})
+}
+
+// ImportApostila POST /api/desig/apostila/import
+// Cola o texto de uma página da apostila, monta a semana e sugere designações.
+func (h *DesignacaoHandler) ImportApostila(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+	tenantID, ok := h.tenantID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Texto string `json:"texto"`
+		Data  string `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Requisição inválida", http.StatusBadRequest)
+		return
+	}
+	var fallback time.Time
+	if strings.TrimSpace(req.Data) != "" {
+		d, err := time.Parse("2006-01-02", req.Data)
+		if err != nil {
+			http.Error(w, "data inválida (use YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		fallback = d
+	}
+	parsed := service.ParseApostila(req.Texto, fallback)
+	if parsed.DataReferencia.IsZero() {
+		http.Error(w, strings.Join(parsed.Avisos, " "), http.StatusBadRequest)
+		return
+	}
+	if len(parsed.Partes) == 0 {
+		msg := "Não encontrei o programa da semana no texto."
+		if len(parsed.Avisos) > 0 {
+			msg = strings.Join(parsed.Avisos, " ")
+		}
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+
+	inicio, fim, reuniao := service.WeekBoundsFromDate(parsed.DataReferencia)
+	dataInicio := inicio.Format("2006-01-02")
+	semana, err := h.repo.GetSemanaByInicio(tenantID, dataInicio)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	criou := false
+	if semana == nil {
+		semana, err = h.repo.CreateSemana(&model.DesigSemana{
+			TenantID:    tenantID,
+			DataInicio:  dataInicio,
+			DataFim:     fim.Format("2006-01-02"),
+			DataReuniao: reuniao.Format("2006-01-02"),
+			Rotulo:      service.FormatWeekRotulo(inicio, fim),
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := h.criarPartesFixas(semana.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		criou = true
+	}
+
+	partes, err := h.repo.ListPartesBySemana(semana.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(partes) == 0 {
+		partes, err = h.criarPartesFixas(semana.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	avisos := append([]string{}, parsed.Avisos...)
+	if err := h.aplicarPartesApostila(semana.ID, partes, parsed.Partes, &avisos); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	partes, err = h.repo.ListPartesBySemana(semana.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	preenchidas, assignAvisos := h.preencherDesignacoesSemana(tenantID, semana, partes)
+	avisos = append(avisos, assignAvisos...)
+
+	partes, err = h.repo.ListPartesBySemana(semana.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if partes == nil {
+		partes = []model.DesigParte{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"semana":                  model.DesigSemanaDetalhe{DesigSemana: *semana, Partes: partes},
+		"avisos":                  avisos,
+		"criou_semana":            criou,
+		"designacoes_preenchidas": preenchidas,
+	})
+}
+
+func apostilaTipoRepetivel(codigo string) bool {
+	switch codigo {
+	case "iniciando_conversas", "cultivando_interesse", "explicando_crencas",
+		"fazendo_discipulos", "discurso", "vida_crista_extra":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *DesignacaoHandler) aplicarPartesApostila(semanaID string, existentes []model.DesigParte, drafts []service.ApostilaParteDraft, avisos *[]string) error {
+	byCodigo := map[string][]*model.DesigParte{}
+	used := map[string]int{}
+	for i := range existentes {
+		c := existentes[i].TipoCodigo
+		byCodigo[c] = append(byCodigo[c], &existentes[i])
+	}
+	for _, d := range drafts {
+		tipo, err := h.repo.GetTipoByCodigo(d.Codigo)
+		if err != nil || tipo == nil {
+			*avisos = append(*avisos, "Tipo não cadastrado: "+d.Codigo)
+			continue
+		}
+		idx := used[d.Codigo]
+		lista := byCodigo[d.Codigo]
+		if idx < len(lista) {
+			p := lista[idx]
+			p.Tema = d.Tema
+			if d.DuracaoMin > 0 {
+				p.DuracaoMin = d.DuracaoMin
+			}
+			if d.Titulo != "" {
+				p.Titulo = d.Titulo
+			}
+			if err := h.repo.UpdateParte(p); err != nil {
+				return err
+			}
+			used[d.Codigo] = idx + 1
+			continue
+		}
+		if !apostilaTipoRepetivel(d.Codigo) {
+			*avisos = append(*avisos, "Não achei a parte fixa “"+tipo.Nome+"” para atualizar.")
+			continue
+		}
+		dur := d.DuracaoMin
+		if dur == 0 {
+			dur = tipo.DuracaoPadraoMin
+		}
+		created, err := h.repo.CreateParte(&model.DesigParte{
+			SemanaID:    semanaID,
+			TipoParteID: tipo.ID,
+			Titulo:      d.Titulo,
+			Tema:        d.Tema,
+			DuracaoMin:  dur,
+			Ordem:       tipo.Ordem + idx,
+		})
+		if err != nil {
+			return err
+		}
+		byCodigo[d.Codigo] = append(byCodigo[d.Codigo], created)
+		used[d.Codigo] = idx + 1
+	}
+	return nil
+}
+
+func parteTemPapel(parte model.DesigParte, papel string) bool {
+	for _, d := range parte.Designacoes {
+		if d.Papel == papel && d.PessoaID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *DesignacaoHandler) preencherDesignacoesSemana(tenantID string, semana *model.DesigSemana, partes []model.DesigParte) (int, []string) {
+	preenchidas := 0
+	var avisos []string
+	for _, parte := range partes {
+		p := parte
+		if !parteTemPapel(p, "dono") {
+			n, aviso := h.autoDesignar(&p, semana, tenantID, "dono")
+			preenchidas += n
+			if aviso != "" {
+				avisos = append(avisos, aviso)
+			}
+		}
+		fresh, err := h.repo.GetParteByID(p.ID)
+		if err != nil || fresh == nil {
+			continue
+		}
+		p = *fresh
+		if p.PermiteAjudante && !parteTemPapel(p, "ajudante") {
+			n, aviso := h.autoDesignar(&p, semana, tenantID, "ajudante")
+			preenchidas += n
+			if aviso != "" {
+				avisos = append(avisos, aviso)
+			}
+		}
+	}
+	return preenchidas, avisos
+}
+
+func (h *DesignacaoHandler) autoDesignar(parte *model.DesigParte, semana *model.DesigSemana, tenantID, papel string) (int, string) {
+	cands, err := h.rankCandidatos(tenantID, semana, parte, papel)
+	if err != nil {
+		return 0, "Falha ao sugerir " + papel + " de “" + parte.Titulo + "”."
+	}
+	escolha := pickAutoCandidato(cands)
+	if escolha == nil {
+		return 0, "Sem candidato automático para “" + parte.Titulo + "” (" + papel + "). Preencha na mão."
+	}
+	if _, err := h.repo.UpsertDesignacao(parte.ID, escolha.ID, papel); err != nil {
+		return 0, "Não consegui gravar “" + parte.Titulo + "”: " + err.Error()
+	}
+	return 1, ""
 }

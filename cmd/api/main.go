@@ -156,6 +156,7 @@ func main() {
 	mux.Handle("/api/desig/semanas", admin(desigHandler.ListSemanas))
 	mux.Handle("/api/desig/semanas/get", admin(desigHandler.GetSemana))
 	mux.Handle("/api/desig/semanas/create", admin(desigHandler.CreateSemana))
+	mux.Handle("/api/desig/apostila/import", admin(desigHandler.ImportApostila))
 	mux.Handle("/api/desig/semanas/delete", admin(desigHandler.DeleteSemana))
 	mux.Handle("/api/desig/partes/create", admin(desigHandler.CreateParte))
 	mux.Handle("/api/desig/partes/update", admin(desigHandler.UpdateParte))
