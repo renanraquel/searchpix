@@ -72,22 +72,27 @@ func NomeToUpper(s string) string {
 	}, s)
 }
 
+func tipoPessoa(p model.DesigPessoa) string {
+	return strings.ToLower(strings.TrimSpace(p.Tipo))
+}
+
 // PessoaElegivelParaParte aplica regras de elegibilidade por tipo de parte.
 func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, donoSexo string) (bool, string) {
 	if !p.Ativo {
 		return false, "Pessoa inativa"
 	}
+	tipo := tipoPessoa(p)
 	switch tipoCodigo {
 	case "oracao_inicial":
 		// Servos/anciãos, ou estudante masculino pleno com disponibilidade de chegar cedo.
-		if p.Tipo == "estudante" {
+		if tipo == "estudante" {
 			if p.Sexo != "M" {
 				return false, "Apenas irmãos (sexo masculino)"
 			}
 			if p.Capacidade != "pleno" {
 				return false, "Estudante precisa ser capacidade plena"
 			}
-		} else if p.Tipo != "servo" && p.Tipo != "anciao" {
+		} else if tipo != "servo" && tipo != "anciao" {
 			return false, "Apenas servos, anciãos ou estudantes plenos"
 		}
 		if !p.DisponivelOracaoInicial {
@@ -98,21 +103,21 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 		}
 	case "oracao_final":
 		// Servos/anciãos, ou estudante masculino pleno.
-		if p.Tipo == "estudante" {
+		if tipo == "estudante" {
 			if p.Sexo != "M" {
 				return false, "Apenas irmãos (sexo masculino)"
 			}
 			if p.Capacidade != "pleno" {
 				return false, "Estudante precisa ser capacidade plena"
 			}
-		} else if p.Tipo != "servo" && p.Tipo != "anciao" {
+		} else if tipo != "servo" && tipo != "anciao" {
 			return false, "Apenas servos, anciãos ou estudantes plenos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
 	case "presidente":
-		if p.Tipo != "anciao" {
+		if tipo != "anciao" {
 			return false, "Apenas anciãos"
 		}
 		if !p.QualificadoPresidente {
@@ -122,7 +127,8 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Sem ajudante nesta parte"
 		}
 	case "tesouros":
-		if p.Tipo != "servo" && p.Tipo != "anciao" {
+		// Anciãos e servos (precisa da flag "qualificado para Tesouros").
+		if tipo != "servo" && tipo != "anciao" {
 			return false, "Apenas servos e anciãos"
 		}
 		if !p.QualificadoTesouros {
@@ -134,14 +140,15 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Sem ajudante nesta parte"
 		}
 	case "joias":
-		if p.Tipo != "servo" && p.Tipo != "anciao" {
+		// Anciãos e servos — sem exigir flag de Tesouros.
+		if tipo != "servo" && tipo != "anciao" {
 			return false, "Apenas servos e anciãos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
 	case "leitura_biblia":
-		if p.Tipo != "estudante" || p.Sexo != "M" {
+		if tipo != "estudante" || p.Sexo != "M" {
 			return false, "Apenas estudantes do sexo masculino"
 		}
 		if papel != "dono" {
@@ -151,7 +158,7 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Capacidade limitada — não pode ser dono da parte"
 		}
 	case "discurso":
-		if p.Tipo != "estudante" || p.Sexo != "M" {
+		if tipo != "estudante" || p.Sexo != "M" {
 			return false, "Apenas estudantes do sexo masculino"
 		}
 		if papel != "dono" {
@@ -161,7 +168,7 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Capacidade limitada — não pode ser dono da parte"
 		}
 	case "iniciando_conversas", "cultivando_interesse", "explicando_crencas", "fazendo_discipulos":
-		if p.Tipo != "estudante" {
+		if tipo != "estudante" {
 			return false, "Apenas estudantes"
 		}
 		if papel == "dono" && p.Capacidade == "limitado" {
@@ -171,15 +178,16 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Ajudante deve ser do mesmo sexo do dono da parte"
 		}
 	case "estudo_biblico":
-		if p.Tipo != "anciao" {
+		if tipo != "anciao" {
 			return false, "Apenas anciãos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
 		}
 	case "vida_crista_extra":
-		if p.Tipo != "servo" && p.Tipo != "anciao" {
-			return false, "Apenas servos e anciãos"
+		// Nossa Vida Cristã (ex.: necessidades locais) — apenas anciãos.
+		if tipo != "anciao" {
+			return false, "Apenas anciãos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"
