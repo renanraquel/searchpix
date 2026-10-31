@@ -27,7 +27,7 @@ type ApostilaParseResult struct {
 
 var (
 	reNumbered        = regexp.MustCompile(`(?i)^\s*(\d{1,2})\.\s+(.+?)\s*$`)
-	reDuration        = regexp.MustCompile(`(?i)\((\d+)\s*min`)
+	reDuration        = regexp.MustCompile(`(?i)\((\d+)\s*min\.?\s*\)`)
 	reYear            = regexp.MustCompile(`\b(20\d{2})\b`)
 	reRangeSameMonth  = regexp.MustCompile(`(?i)(\d{1,2})(?:\.º|º|o)?\s*[-–—]\s*(\d{1,2})(?:\.º|º|o)?\s+DE\s+([A-ZÇÃÉÍÓÚÂÊÔ]+)\b`)
 	reRangeCrossMonth = regexp.MustCompile(`(?i)(\d{1,2})(?:\.º|º|o)?\s+DE\s+([A-ZÇÃÉÍÓÚÂÊÔ]+)\s*[-–—]\s*(\d{1,2})(?:\.º|º|o)?\s+DE\s+([A-ZÇÃÉÍÓÚÂÊÔ]+)\b`)
@@ -215,7 +215,10 @@ func extractDurationAndTema(block []string) (int, string) {
 		if skipLine(line) {
 			continue
 		}
+		// Remove só o marcador de tempo; o prefixo "(N min)" é recolocado no final.
 		clean := reDuration.ReplaceAllString(line, " ")
+		clean = strings.TrimSpace(clean)
+		clean = strings.TrimLeft(clean, ") ")
 		clean = strings.TrimSpace(clean)
 		if clean == "" {
 			continue
@@ -231,6 +234,13 @@ func extractDurationAndTema(block []string) (int, string) {
 	}
 	tema := strings.TrimSpace(strings.Join(temaParts, " "))
 	tema = strings.Join(strings.Fields(tema), " ")
+	if dur > 0 {
+		if tema == "" {
+			tema = fmt.Sprintf("(%d min)", dur)
+		} else {
+			tema = fmt.Sprintf("(%d min) %s", dur, tema)
+		}
+	}
 	if len([]rune(tema)) > 280 {
 		tema = string([]rune(tema)[:280])
 	}

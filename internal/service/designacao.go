@@ -134,8 +134,8 @@ func PessoaElegivelParaParte(p model.DesigPessoa, tipoCodigo, papel string, dono
 			return false, "Sem ajudante nesta parte"
 		}
 	case "joias":
-		if p.Tipo != "servo" {
-			return false, "Apenas servos ministeriais"
+		if p.Tipo != "servo" && p.Tipo != "anciao" {
+			return false, "Apenas servos e anciãos"
 		}
 		if papel != "dono" {
 			return false, "Sem ajudante nesta parte"

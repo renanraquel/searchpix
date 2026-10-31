@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,8 +75,19 @@ func TestParseApostila_SampleWeek(t *testing.T) {
 	if res.Partes[0].Tema == "" {
 		t.Error("tesouros deveria ter o tema do discurso")
 	}
-	if res.Partes[3].Tema == "" {
-		t.Error("iniciando conversas deveria ter o tema da apostila")
+	leitura := res.Partes[2]
+	if !strings.HasPrefix(leitura.Tema, "(4 min)") {
+		t.Errorf("leitura tema = %q, want prefix (4 min)", leitura.Tema)
+	}
+	if strings.HasPrefix(strings.TrimSpace(leitura.Tema), ")") {
+		t.Errorf("leitura tema começou com ): %q", leitura.Tema)
+	}
+	iniciando := res.Partes[3]
+	if !strings.HasPrefix(iniciando.Tema, "(3 min) DE CASA") {
+		t.Errorf("iniciando tema = %q, want “(3 min) DE CASA…”", iniciando.Tema)
+	}
+	if strings.HasPrefix(strings.TrimSpace(iniciando.Tema), ")") {
+		t.Errorf("iniciando tema começou com ): %q", iniciando.Tema)
 	}
 }
 

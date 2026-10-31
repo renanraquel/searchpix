@@ -559,6 +559,10 @@ func (h *DesignacaoHandler) SetDesignacao(w http.ResponseWriter, r *http.Request
 				donoSexo = dono.Sexo
 			}
 		}
+		if d.Papel != req.Papel && d.PessoaID == req.PessoaID {
+			http.Error(w, "A mesma pessoa não pode ser dono e ajudante na mesma parte", http.StatusBadRequest)
+			return
+		}
 	}
 	if req.Papel == "dono" {
 		donoSexo = pessoa.Sexo
@@ -669,7 +673,11 @@ func (h *DesignacaoHandler) rankCandidatos(tenantID string, semana *model.DesigS
 		return nil, err
 	}
 	donoSexo := ""
+	ocupadosNaParte := map[string]string{}
 	for _, d := range parte.Designacoes {
+		if d.PessoaID != "" {
+			ocupadosNaParte[d.PessoaID] = d.Papel
+		}
 		if d.Papel == "dono" {
 			dono, _ := h.repo.GetPessoaByID(d.PessoaID)
 			if dono != nil {
@@ -686,6 +694,10 @@ func (h *DesignacaoHandler) rankCandidatos(tenantID string, semana *model.DesigS
 		elegivel, motivo := service.PessoaElegivelParaParte(p, parte.TipoCodigo, papel, donoSexo)
 		c.Elegivel = elegivel
 		c.MotivoInelegivel = motivo
+		if outroPapel, ok := ocupadosNaParte[p.ID]; ok && outroPapel != papel {
+			c.Elegivel = false
+			c.MotivoInelegivel = "Já é " + outroPapel + " nesta parte"
+		}
 		ja, _, _ := h.repo.PessoaJaDesignadaNaSemana(semana.ID, p.ID, parte.ID)
 		c.JaDesignadoNaSemana = ja
 		if ja {
