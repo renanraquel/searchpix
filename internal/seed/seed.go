@@ -18,6 +18,9 @@ const (
 
 	SeedAdminUsername = "ADMIN"
 	SeedAdminPassword = "Pomarola6770@"
+
+	SeedReceituarioUsername = "vera"
+	SeedReceituarioPassword = "vera2026@"
 )
 
 // Run cria o primeiro tenant e usuário se o banco estiver vazio (local e produção)
@@ -91,4 +94,41 @@ func RunAdminAndDesignacao(tenantRepo *repository.TenantRepository, userRepo *re
 		return
 	}
 	log.Printf("Seed ADMIN: usuário %q criado com acesso às telas de designações", SeedAdminUsername)
+}
+
+// RunReceituarioUser garante usuário com acesso exclusivo ao Receituário.
+func RunReceituarioUser(tenantRepo *repository.TenantRepository, userRepo *repository.UserRepository) {
+	exist, err := userRepo.GetByUsername(SeedReceituarioUsername)
+	if err != nil {
+		log.Printf("Seed receituario: erro ao buscar usuário: %v", err)
+		return
+	}
+	if exist != nil {
+		return
+	}
+
+	tenants, err := tenantRepo.List()
+	if err != nil || len(tenants) == 0 {
+		log.Printf("Seed receituario: nenhum tenant disponível para vincular o usuário")
+		return
+	}
+	tenantID := tenants[0].ID
+	for _, t := range tenants {
+		if t.Slug == SeedTenantSlug {
+			tenantID = t.ID
+			break
+		}
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(SeedReceituarioPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Seed receituario: erro ao gerar hash: %v", err)
+		return
+	}
+	_, err = userRepo.CreateWithProfileAndRole(tenantID, SeedReceituarioUsername, string(hash), "Vera Lucia Ronque Rodrigues", "", "", "", model.RoleReceituario)
+	if err != nil {
+		log.Printf("Seed receituario: erro ao criar usuário: %v", err)
+		return
+	}
+	log.Printf("Seed receituario: usuário %q criado com acesso exclusivo ao Receituário", SeedReceituarioUsername)
 }

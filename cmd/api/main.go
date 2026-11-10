@@ -50,6 +50,7 @@ func main() {
 	// Seed: cria tenant ibimassas e usuário ibimassas se o banco estiver vazio (local e produção)
 	seed.Run(tenantRepo, userRepo)
 	seed.RunAdminAndDesignacao(tenantRepo, userRepo, desigRepo)
+	seed.RunReceituarioUser(tenantRepo, userRepo)
 
 	r2Client, err := r2.New(r2.Config{
 		AccountID:       cfg.R2.AccountID,

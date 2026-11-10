@@ -12,8 +12,9 @@ type Tenant struct {
 }
 
 const (
-	RoleTenant = "tenant"
-	RoleAdmin  = "admin"
+	RoleTenant      = "tenant"
+	RoleAdmin       = "admin"
+	RoleReceituario = "receituario"
 )
 
 // User usuário do sistema (por tenant)
